@@ -1,0 +1,129 @@
+:root {
+  --bg-deep: #020409;
+  --fui-bg: rgba(6, 12, 24, 0.55);
+  --fui-border: rgba(100, 190, 255, 0.18);
+  --fui-corner: #5ce1e6;
+  --accent-blue: #4da6ff;
+  --accent-cyan: #00d8ff;
+  --accent-gold: #fbbf24;
+  --danger-red: #ff2a4d;
+  --safe-green: #10b981;
+  --text-main: #f0f6fc;
+  --text-dim: rgba(175, 205, 240, 0.58);
+  --font-title: 'Orbitron', sans-serif;
+  --font-mono: 'Share Tech Mono', monospace;
+  --font-sans: 'Rajdhani', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+}
+
+html, body, #app {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--bg-deep);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.fui-box {
+  position: relative;
+  background: var(--fui-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--fui-border);
+  padding: 14px 18px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), inset 0 0 20px rgba(77, 166, 255, 0.04);
+  transition: opacity 0.4s ease, transform 0.4s ease, border-color 0.3s ease;
+}
+
+.fui-box::before,
+.fui-box::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  pointer-events: none;
+}
+
+.fui-box::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid var(--fui-corner);
+  border-left: 2px solid var(--fui-corner);
+}
+
+.fui-box::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid var(--fui-corner);
+  border-right: 2px solid var(--fui-corner);
+}
+
+.overclock-mode .fui-box {
+  border-color: rgba(255, 160, 40, 0.45);
+  --fui-corner: #ffaa33;
+}
+
+/* 3D-to-2D 轨道节点投影追踪准星 */
+.spatial-reticle {
+  position: fixed;
+  z-index: 6;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: opacity 0.25s ease;
+}
+
+.reticle-svg {
+  width: 28px;
+  height: 28px;
+  color: var(--accent-cyan);
+  filter: drop-shadow(0 0 6px rgba(0, 216, 255, 0.6));
+  transition: transform 0.25s ease, color 0.25s ease;
+}
+
+.spatial-reticle:hover .reticle-svg {
+  transform: scale(1.22) rotate(45deg);
+  color: #ffffff;
+}
+
+.reticle-tag {
+  background: rgba(4, 10, 20, 0.72);
+  border-left: 2px solid var(--accent-cyan);
+  padding: 2px 7px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--text-main);
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+}
+
+.reticle-alt {
+  color: var(--accent-cyan);
+  font-size: 8px;
+  display: block;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.5s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0, 216, 255, 0.4); }
