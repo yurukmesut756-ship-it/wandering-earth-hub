@@ -11,7 +11,6 @@ export const EARTH_RADIUS = 100.0
 export const SUN_LIGHT_POS = new THREE.Vector3(220, 100, 200)
 export const SUN_DIR_NORM = SUN_LIGHT_POS.clone().normalize()
 
-// 晨昏线暮光位置法线 (与 SUN_DIR_NORM 点积约为 -0.05，地面笼罩暮光轮廓，背后天空是深邃黑夜星空！)
 const ENGINE_ARRAY_NORMAL = new THREE.Vector3(-0.66, 0.56, 0.50).normalize()
 const EQUATORIAL_NORMAL = new THREE.Vector3(-0.68, 0.0, 0.733).normalize()
 const ANCHOR_NORMAL = new THREE.Vector3(-0.52, 0.0, 0.854).normalize()
@@ -25,19 +24,16 @@ export class EarthSceneEngine {
   private bloomPass!: UnrealBloomPass
   private controls!: OrbitControls
 
-  private camFillLight!: THREE.DirectionalLight
-  private camRimLight!: THREE.DirectionalLight
-  private hemiLight!: THREE.HemisphereLight
-
   private builder!: MegaStructuresBuilder
   private earthGroup!: THREE.Group
   private earthMaterial!: THREE.ShaderMaterial
   private cloudsMesh!: THREE.Mesh
   private globalNeedlesMat!: THREE.ShaderMaterial
 
-  // 8 大空间节点与动画绑定
+  // 8 大空间节点与高密矩阵引用
   private engineArrayGroup!: THREE.Group
   private engineArrayRigs: BrutalistEngineRig[] = []
+  private distantMatrixBeamMat!: THREE.ShaderMaterial
   private steeringArrayGroup!: THREE.Group
   private steeringRigs: BrutalistEngineRig[] = []
   private anchorGroup!: THREE.Group
@@ -49,9 +45,13 @@ export class EarthSceneEngine {
   private deepSpaceLaserMat!: THREE.ShaderMaterial
   private lunaGroup!: THREE.Group
   private lunarRigs: BrutalistEngineRig[] = []
+
+  // 狂暴红巨星太阳 (含米粒黑子、18道3D磁环日珥耀斑、放射状星芒日冕、2000颗CME抛射粒子)
   private dyingSunGroup!: THREE.Group
   private dyingSunMat!: THREE.ShaderMaterial
-  private coronaMat!: THREE.ShaderMaterial
+  private solarProminenceMat!: THREE.ShaderMaterial
+  private coronaStreamersMat!: THREE.ShaderMaterial
+  private cmeParticlesMat!: THREE.ShaderMaterial
   private eclipseOccluderSphere!: THREE.Mesh
 
   private camAnim = {
@@ -81,15 +81,18 @@ export class EarthSceneEngine {
     this.initRendererAndLighting()
     this.createStarfieldAndDistantSaturn()
     this.createPhotorealisticFrozenEarth()
-    this.createRazorThinGlobalLightNeedles()
+    this.createDenseGlobalEngineMatrix()
     this.createOrbitalTrajectoryRings()
     this.createAllEightDetailedMegastructures()
-    this.createBoilingRedGiantSunAndEclipseOccluder()
+    this.createBoilingSunWith3DSolarFlares()
     this.setupResize()
     this.animate()
     this.startAutoCinematicCycle()
   }
 
+  // ============================================================================
+  // 1. 渲染器与固定立体侧逆光布局 (移除相机头灯，让法线贴图与铸钢肋片呈现深邃3D立体光影！)
+  // ============================================================================
   private initRendererAndLighting() {
     this.scene = new THREE.Scene()
 
@@ -114,26 +117,23 @@ export class EarthSceneEngine {
     this.controls.minDistance = 1.2
     this.controls.maxDistance = 1400
 
-    const sunLight = new THREE.DirectionalLight(0xfff8ed, 4.0)
+    // 1. 主太阳强方向光 (固定角度斜射，铸造强烈明暗交界与金属高光)
+    const sunLight = new THREE.DirectionalLight(0xfff6e6, 4.2)
     sunLight.position.copy(SUN_LIGHT_POS)
     this.scene.add(sunLight)
 
-    this.hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1e3a8a, 1.0)
-    this.scene.add(this.hemiLight)
+    // 2. 地球电离层冷蓝固定侧逆轮廓光 (照射晨昏线侧的发动机矩阵与空间站，产生硬核金属勾边)
+    const twilightRimLight = new THREE.DirectionalLight(0x00b4ff, 2.2)
+    twilightRimLight.position.set(-240, 140, -120)
+    this.scene.add(twilightRimLight)
 
-    // 随相机同步补光与轮廓光组
-    this.camFillLight = new THREE.DirectionalLight(0x3888ff, 1.25)
-    this.camFillLight.position.set(-25, 15, 30)
-    this.camRimLight = new THREE.DirectionalLight(0xffeedd, 1.1)
-    this.camRimLight.position.set(30, 25, -15)
-    this.camera.add(this.camFillLight)
-    this.camera.add(this.camRimLight)
-    this.scene.add(this.camera)
+    // 3. 地表熔岩/高炉底部暖橙反射光
+    const hemiLight = new THREE.HemisphereLight(0x7dd3fc, 0x2e1d0f, 0.85)
+    this.scene.add(hemiLight)
 
-    // 严格钳制 UnrealBloomPass：threshold: 0.65, strength: 0.55 (超载上限 0.80), radius: 0.45
     this.composer = new EffectComposer(this.renderer)
     this.composer.addPass(new RenderPass(this.scene, this.camera))
-    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.45, 0.65)
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.58, 0.45, 0.65)
     this.composer.addPass(this.bloomPass)
 
     this.earthGroup = new THREE.Group()
@@ -177,7 +177,7 @@ export class EarthSceneEngine {
     saturn.add(
       new THREE.Mesh(
         new THREE.SphereGeometry(26, 48, 48),
-        new THREE.MeshStandardMaterial({ color: 0x9a8262, roughness: 0.8 })
+        new THREE.MeshStandardMaterial({ color: 0x9a8262, roughness: 0.85 })
       )
     )
     const ring = new THREE.Mesh(
@@ -189,6 +189,9 @@ export class EarthSceneEngine {
     this.scene.add(saturn)
   }
 
+  // ============================================================================
+  // 2. 真·分形微法线冰封地球着色器 (彻底消除“玻璃球”塑料高光，呈现崎岖冰川山脉与哑光冻土)
+  // ============================================================================
   private createPhotorealisticFrozenEarth() {
     const loader = new THREE.TextureLoader()
     loader.setCrossOrigin('anonymous')
@@ -204,8 +207,10 @@ export class EarthSceneEngine {
         varying vec2 vUv;
         varying vec3 vNormalWorld;
         varying vec3 vViewDir;
+        varying vec3 vLocalPos;
         void main() {
           vUv = uv;
+          vLocalPos = position;
           vNormalWorld = normalize(mat3(modelMatrix) * normal);
           vec4 worldPos = modelMatrix * vec4(position, 1.0);
           vViewDir = normalize(cameraPosition - worldPos.xyz);
@@ -220,40 +225,79 @@ export class EarthSceneEngine {
         varying vec2 vUv;
         varying vec3 vNormalWorld;
         varying vec3 vViewDir;
+        varying vec3 vLocalPos;
+
+        // 实时 3D 微地形分形函数，为冰原与山脉注入高频岩石凹凸阴影，彻底消灭玻璃球光滑感！
+        float hash(vec3 p) {
+          p = fract(p * 0.3183099 + 0.1);
+          p *= 17.0;
+          return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+        }
+        float noise(vec3 x) {
+          vec3 i = floor(x);
+          vec3 f = fract(x);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(
+            mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x),
+                mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+            mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y),
+            f.z
+          );
+        }
+        float fbm(vec3 p) {
+          return noise(p) * 0.55 + noise(p * 2.3) * 0.3 + noise(p * 5.2) * 0.15;
+        }
 
         void main() {
-          float hC = texture2D(uBumpTex, vUv).r;
-          float hR = texture2D(uBumpTex, vUv + vec2(0.001, 0.0)).r;
-          float hU = texture2D(uBumpTex, vUv + vec2(0.0, 0.001)).r;
-          vec3 bumpOffset = vec3(hC - hR, hC - hU, 0.0) * 1.4;
+          vec3 rawDay = texture2D(uDayTex, vUv).rgb;
+          vec3 nightSample = texture2D(uNightTex, vUv).rgb;
+          float hMap = texture2D(uBumpTex, vUv).r;
 
-          vec3 N = normalize(vNormalWorld + bumpOffset);
+          // 计算贴图高程梯度 + 3D 实时分形微法线扰动
+          float hR = texture2D(uBumpTex, vUv + vec2(0.0012, 0.0)).r;
+          float hU = texture2D(uBumpTex, vUv + vec2(0.0, 0.0012)).r;
+          vec3 p3 = vLocalPos * 0.35;
+          float n0 = fbm(p3);
+          float nX = fbm(p3 + vec3(0.08, 0.0, 0.0));
+          float nY = fbm(p3 + vec3(0.0, 0.08, 0.0));
+
+          vec3 microPerturb = vec3((hMap - hR) * 2.2 + (n0 - nX) * 0.65, (hMap - hU) * 2.2 + (n0 - nY) * 0.65, 0.0);
+          vec3 N = normalize(vNormalWorld + microPerturb);
           vec3 V = normalize(vViewDir);
           vec3 L = normalize(uSunDir);
 
-          vec3 rawDay = texture2D(uDayTex, vUv).rgb;
-          vec3 nightSample = texture2D(uNightTex, vUv).rgb;
+          // 区分陆地山脉与深海冰层
+          float landMask = smoothstep(0.03, 0.22, rawDay.r - rawDay.b * 0.62);
+          float ridgeCrag = abs(n0 * 2.0 - 1.0);
+          vec3 rockyGlacier = mix(vec3(0.28, 0.33, 0.38), vec3(0.84, 0.90, 0.96), smoothstep(0.2, 0.75, ridgeCrag + hMap * 0.3));
+          vec3 continentalCol = mix(rawDay * 1.15, rockyGlacier, 0.65);
 
-          float landMask = smoothstep(0.05, 0.25, rawDay.r - rawDay.b * 0.65);
-          vec3 glacialLand = mix(rawDay * 1.25, vec3(0.82, 0.91, 0.98), 0.55);
-          vec3 sapphireOcean = mix(rawDay, vec3(0.05, 0.24, 0.52), 0.45);
-          vec3 frozenAlbedo = mix(sapphireOcean, glacialLand, landMask);
+          // 冰封海洋与冰裂纹理
+          float iceCrack = smoothstep(0.46, 0.52, n0);
+          vec3 deepOcean = mix(vec3(0.03, 0.12, 0.26), vec3(0.18, 0.38, 0.58), iceCrack * 0.55);
+          vec3 surfaceAlbedo = mix(deepOcean, continentalCol, landMask);
 
+          // Oren-Nayar 风格粗糙漫反射 (陆地 100% 哑光零塑料感，仅无冰深海保留微弱高光)
           float NdotL = dot(N, L);
-          float dayFactor = smoothstep(-0.18, 0.22, NdotL);
-          float diffuse = max(0.0, NdotL);
+          float dayFactor = smoothstep(-0.16, 0.22, NdotL);
+          float diffuse = pow(max(0.0, NdotL), 0.88);
 
           vec3 H = normalize(L + V);
-          float spec = pow(max(0.0, dot(N, H)), 32.0) * (1.0 - landMask * 0.5) * 0.25 * dayFactor;
-          vec3 litDay = clamp(frozenAlbedo * (0.12 + diffuse * 0.56) + vec3(spec), 0.0, 0.60);
+          float oceanSpecMask = (1.0 - landMask) * (1.0 - iceCrack * 0.8);
+          float spec = pow(max(0.0, dot(N, H)), 64.0) * oceanSpecMask * 0.14 * dayFactor;
 
-          vec3 nightBase = vec3(0.012, 0.028, 0.065) * (1.0 - dayFactor);
-          vec3 nightLights = nightSample * vec3(1.15, 0.92, 0.6) * 0.85 * (1.0 - dayFactor);
+          vec3 litDay = clamp(surfaceAlbedo * (0.08 + diffuse * 0.58) + vec3(spec), 0.0, 0.60);
 
-          float fresnel = pow(1.0 - max(0.0, dot(V, N)), 3.2);
-          vec3 rimGlow = mix(vec3(0.08, 0.52, 1.0), vec3(0.38, 0.88, 1.0), dayFactor) * fresnel * 0.52;
+          // 夜半球：深炭蓝冻土 + 金色地下城灯网 + 晨昏线散射
+          vec3 nightBase = vec3(0.008, 0.018, 0.042) * (1.0 - dayFactor);
+          vec3 nightCities = nightSample * vec3(1.2, 0.92, 0.55) * 0.9 * (1.0 - dayFactor);
 
-          vec3 finalCol = mix(nightBase + nightLights, litDay, dayFactor) + rimGlow;
+          // 极薄的边缘大气散射 (仅出现在球体最外圈 8% 边缘，绝不把地球变成玻璃泡！)
+          float limb = pow(1.0 - max(0.0, dot(V, vNormalWorld)), 5.5);
+          vec3 atmosRim = mix(vec3(0.05, 0.42, 0.95), vec3(0.35, 0.85, 1.0), dayFactor) * limb * 0.55;
+
+          vec3 finalCol = mix(nightBase + nightCities, litDay, dayFactor) + atmosRim;
           gl_FragColor = vec4(finalCol, 1.0);
         }
       `
@@ -273,11 +317,13 @@ export class EarthSceneEngine {
     const cloudMat = new THREE.MeshStandardMaterial({
       map: this.builder.fluffyCloudsTex,
       alphaMap: this.builder.fluffyCloudsTex,
-      color: 0xffffff,
-      roughness: 0.9,
+      bumpMap: this.builder.fluffyCloudsTex,
+      bumpScale: 0.15,
+      color: 0xf8fafc,
+      roughness: 0.95,
       metalness: 0.0,
       transparent: true,
-      opacity: 0.78,
+      opacity: 0.72,
       depthWrite: false
     })
     loader.load(
@@ -285,16 +331,18 @@ export class EarthSceneEngine {
       (tex) => {
         cloudMat.map = tex
         cloudMat.alphaMap = tex
+        cloudMat.bumpMap = tex
         cloudMat.needsUpdate = true
       }
     )
-    this.cloudsMesh = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS * 1.005, 96, 96), cloudMat)
+    this.cloudsMesh = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS * 1.004, 96, 96), cloudMat)
     this.earthGroup.add(this.cloudsMesh)
 
+    // 紧贴地表边缘的高锐度大气散射层 (指数提高到 4.8，只亮边缘不糊球面)
     const atmosHaloMat = new THREE.ShaderMaterial({
       uniforms: {
-        uInnerColor: { value: new THREE.Color(0x1a8cff) },
-        uOuterColor: { value: new THREE.Color(0x66e0ff) }
+        uInnerColor: { value: new THREE.Color(0x0055ff) },
+        uOuterColor: { value: new THREE.Color(0x55d8ff) }
       },
       vertexShader: `
         varying vec3 vNormal;
@@ -312,9 +360,9 @@ export class EarthSceneEngine {
         varying vec3 vNormal;
         varying vec3 vViewPos;
         void main() {
-          float f = pow(clamp(0.66 - dot(vNormal, vViewPos), 0.0, 1.0), 3.2);
+          float f = pow(clamp(0.58 - dot(vNormal, vViewPos), 0.0, 1.0), 4.5);
           vec3 col = mix(uInnerColor, uOuterColor, f);
-          gl_FragColor = vec4(col, f * 0.82);
+          gl_FragColor = vec4(col, f * 0.75);
         }
       `,
       side: THREE.BackSide,
@@ -322,13 +370,16 @@ export class EarthSceneEngine {
       blending: THREE.AdditiveBlending,
       depthWrite: false
     })
-    this.earthGroup.add(new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS * 1.026, 96, 96), atmosHaloMat))
+    this.earthGroup.add(new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS * 1.02, 96, 96), atmosHaloMat))
   }
 
-  private createRazorThinGlobalLightNeedles() {
-    const totalCount = 2360
-    const needleGeo = new THREE.CylinderGeometry(0.02, 0.06, 4.2, 6, 1, true)
-    needleGeo.translate(0, 2.1, 0)
+  // ============================================================================
+  // 3. 全球 6,000 座高密度行星发动机激光矩阵 + 6,000 颗地表聚变核心亮斑
+  // ============================================================================
+  private createDenseGlobalEngineMatrix() {
+    const totalCount = 6000
+    const needleGeo = new THREE.CylinderGeometry(0.018, 0.065, 5.2, 6, 1, true)
+    needleGeo.translate(0, 2.6, 0)
 
     this.globalNeedlesMat = new THREE.ShaderMaterial({
       uniforms: {
@@ -356,17 +407,18 @@ export class EarthSceneEngine {
         varying float vWaveOrder;
 
         void main() {
-          float activeMask = smoothstep(vWaveOrder - 0.08, vWaveOrder + 0.02, uWaveProgress);
+          float activeMask = smoothstep(vWaveOrder - 0.06, vWaveOrder + 0.02, uWaveProgress);
           if (activeMask <= 0.01 || uThrust <= 0.01) discard;
 
-          float rootSpark = exp(-vUv.y * 12.0) * 0.65;
-          float hairFade = pow(max(0.0, 1.0 - vUv.y), 2.2);
+          float rootCore = exp(-vUv.y * 10.0) * 0.85;
+          float laserDecay = pow(max(0.0, 1.0 - vUv.y), 1.9);
+          float pulse = 0.88 + 0.12 * sin(uTime * 16.0 + vWaveOrder * 90.0);
 
-          vec3 iceBlue = mix(vec3(0.4, 0.88, 1.0), vec3(1.0, 1.0, 1.0), rootSpark);
-          vec3 whiteGold = mix(vec3(1.0, 0.65, 0.2), vec3(1.0, 0.95, 0.85), rootSpark);
-          vec3 col = mix(iceBlue, whiteGold, uOverclock);
+          vec3 iceBlue = mix(vec3(0.15, 0.82, 1.0), vec3(1.3, 1.6, 2.0), rootCore);
+          vec3 whiteGold = mix(vec3(1.0, 0.6, 0.15), vec3(1.6, 1.4, 1.0), rootCore);
+          vec3 col = mix(iceBlue, whiteGold, uOverclock) * pulse;
 
-          float alpha = clamp((hairFade * 0.52 + rootSpark * 0.35) * activeMask * clamp(uThrust, 0.2, 1.15), 0.0, 0.60);
+          float alpha = clamp((laserDecay * 0.58 + rootCore * 0.45) * activeMask * clamp(uThrust, 0.25, 1.2), 0.0, 0.72);
           gl_FragColor = vec4(col, alpha);
         }
       `,
@@ -383,9 +435,10 @@ export class EarthSceneEngine {
     const sparkPos = new Float32Array(totalCount * 3)
 
     const patches = [
-      { latMin: 16, latMax: 68, lonMin: 10, lonMax: 145 },
-      { latMin: 22, latMax: 64, lonMin: -130, lonMax: -62 },
-      { latMin: 14, latMax: 52, lonMin: -12, lonMax: 48 }
+      { latMin: 15, latMax: 72, lonMin: 8, lonMax: 152 },    // 亚欧大陆全境高密矩阵
+      { latMin: 20, latMax: 68, lonMin: -135, lonMax: -58 }, // 北美大陆高密矩阵
+      { latMin: 12, latMax: 55, lonMin: -15, lonMax: 52 },   // 欧洲与北非矩阵
+      { latMin: 25, latMax: 62, lonMin: 65, lonMax: 135 }    // 东亚与西伯利亚超密核心区
     ]
 
     for (let i = 0; i < totalCount; i++) {
@@ -393,15 +446,16 @@ export class EarthSceneEngine {
       let lonDeg = 0
       let scaleLen = 1.0
 
-      if (i < 360) {
-        latDeg = (Math.random() - 0.5) * 0.8
-        lonDeg = (i / 360) * 360 - 180
-        scaleLen = 0.75 + Math.random() * 0.35
+      if (i < 720) {
+        // 720 座赤道连续高密转向光环
+        latDeg = (Math.random() - 0.5) * 1.1
+        lonDeg = (i / 720) * 360 - 180
+        scaleLen = 0.85 + Math.random() * 0.4
       } else {
         const p = patches[i % patches.length]
         latDeg = p.latMin + Math.random() * (p.latMax - p.latMin)
         lonDeg = p.lonMin + Math.random() * (p.lonMax - p.lonMin)
-        scaleLen = 0.8 + Math.random() * 0.55
+        scaleLen = 0.75 + Math.random() * 0.75
       }
 
       const phi = (90 - latDeg) * (Math.PI / 180)
@@ -433,11 +487,11 @@ export class EarthSceneEngine {
       new THREE.Points(
         sparkGeo,
         new THREE.PointsMaterial({
-          color: 0xa5f3fc,
-          size: 0.65,
+          color: 0xcffafe,
+          size: 0.78,
           map: this.builder.softGlowSprite,
           transparent: true,
-          opacity: 0.78,
+          opacity: 0.88,
           blending: THREE.AdditiveBlending,
           depthWrite: false
         })
@@ -481,34 +535,31 @@ export class EarthSceneEngine {
   }
 
   // ============================================================================
-  // 5. 构建全部 8 大巨构节点 (晨昏线暮光布局 + 低角度逆星空背景)
+  // 4. 构建全部 8 大巨构节点 (ENGINE ARRAY 同屏 73 座巨型发动机矩阵铺满天际线！)
   // ============================================================================
   private createAllEightDetailedMegastructures() {
     const up = new THREE.Vector3(0, 1, 0)
 
     // -------------------------------------------------------------------------
-    // Node 2: ENGINE ARRAY 01 (置于晨昏线暮光交界带 ENGINE_ARRAY_NORMAL，背后是深邃星空！)
+    // Node 2: ENGINE ARRAY 01 (9座前景超精细高炉发动机 + 64座中远景 Instanced 发动机矩阵 = 同屏 73 座！)
     // -------------------------------------------------------------------------
     this.engineArrayGroup = new THREE.Group()
     const tangentF = new THREE.Vector3().crossVectors(up, ENGINE_ARRAY_NORMAL).normalize()
     const tangentR = new THREE.Vector3().crossVectors(ENGINE_ARRAY_NORMAL, tangentF).normalize()
 
-    const engineSites = [
-      { f: 0.0, r: 0.0, s: 1.45 },     // 0号旗舰重聚变发动机 (Chapter II IGNITION 主角)
-      { f: 2.2, r: -2.1, s: 1.25 },
-      { f: 2.8, r: 2.2, s: 1.22 },
-      { f: 5.4, r: -0.6, s: 1.15 },
-      { f: 6.2, r: 3.1, s: 1.08 },
-      { f: 8.5, r: -2.8, s: 1.02 },
-      { f: 9.6, r: 1.2, s: 0.98 },
-      { f: 12.2, r: -1.2, s: 0.92 },
-      { f: 13.5, r: 2.6, s: 0.88 },
-      { f: 16.0, r: -2.4, s: 0.85 },
-      { f: 17.5, r: 0.8, s: 0.82 }
+    const heroEngineSites = [
+      { f: 0.0, r: 0.0, s: 1.48 },
+      { f: 2.1, r: -2.2, s: 1.28 },
+      { f: 2.5, r: 2.3, s: 1.25 },
+      { f: 4.8, r: -0.5, s: 1.18 },
+      { f: 5.5, r: -4.2, s: 1.12 },
+      { f: 5.8, r: 3.8, s: 1.12 },
+      { f: 8.2, r: -2.4, s: 1.05 },
+      { f: 8.6, r: 1.8, s: 1.05 },
+      { f: 11.2, r: -0.2, s: 0.98 }
     ]
 
-    // 局部雪山地形：边缘沉入地壳内部 (-0.25) 并在远景自动 LOD 隐藏，绝不在地球远景露出方形补丁！
-    const terrainGeo = new THREE.PlaneGeometry(42, 42, 128, 128)
+    const terrainGeo = new THREE.PlaneGeometry(56, 56, 140, 140)
     const posAttr = terrainGeo.attributes.position
     const colorsAttr = new Float32Array(posAttr.count * 3)
 
@@ -516,8 +567,8 @@ export class EarthSceneEngine {
       const lx = posAttr.getX(i)
       const ly = posAttr.getY(i)
       const radialDist = Math.hypot(lx, ly)
-      const edgeFade = 1.0 - THREE.MathUtils.smoothstep(radialDist, 12.0, 20.5)
-      const h = this.getMountainElevation(lx, ly, engineSites) * edgeFade - (1.0 - edgeFade) * 0.35
+      const edgeFade = 1.0 - THREE.MathUtils.smoothstep(radialDist, 16.0, 27.5)
+      const h = this.getMountainElevation(lx, ly, heroEngineSites) * edgeFade - (1.0 - edgeFade) * 0.35
 
       const worldPt = ENGINE_ARRAY_NORMAL
         .clone()
@@ -528,29 +579,29 @@ export class EarthSceneEngine {
         .multiplyScalar(EARTH_RADIUS + h)
       posAttr.setXYZ(i, worldPt.x, worldPt.y, worldPt.z)
 
-      // 暮光冷蓝/暗岩雪山色调，绝不刺眼泛白抢夺尾焰对比度
       const snowRatio = THREE.MathUtils.clamp((h - 0.25) / 1.3, 0.1, 1.0)
-      colorsAttr[i * 3] = THREE.MathUtils.lerp(0.08, 0.32, snowRatio)
-      colorsAttr[i * 3 + 1] = THREE.MathUtils.lerp(0.12, 0.44, snowRatio)
-      colorsAttr[i * 3 + 2] = THREE.MathUtils.lerp(0.18, 0.62, snowRatio)
+      colorsAttr[i * 3] = THREE.MathUtils.lerp(0.08, 0.34, snowRatio)
+      colorsAttr[i * 3 + 1] = THREE.MathUtils.lerp(0.12, 0.46, snowRatio)
+      colorsAttr[i * 3 + 2] = THREE.MathUtils.lerp(0.18, 0.64, snowRatio)
     }
     terrainGeo.setAttribute('color', new THREE.BufferAttribute(colorsAttr, 3))
     terrainGeo.computeVertexNormals()
 
     const twilightMountainMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      bumpMap: this.builder.gunmetalBump,
-      bumpScale: 0.06,
+      normalMap: this.builder.steelNormal,
+      normalScale: new THREE.Vector2(0.8, 0.8),
       roughness: 0.78,
-      metalness: 0.15,
-      envMapIntensity: 1.1
+      metalness: 0.18,
+      envMapIntensity: 1.2
     })
     this.engineArrayGroup.add(new THREE.Mesh(terrainGeo, twilightMountainMat))
 
-    engineSites.forEach((s, idx) => {
-      const threshold = (idx / engineSites.length) * 0.78
-      const rig = this.builder.buildBrutalistPlanetaryEngine(s.s, 15.5, threshold)
-      const h = this.getMountainElevation(s.r, s.f, engineSites)
+    // 挂载 9 座前景高精主力发动机 + 喷口蓝白点光源照亮山脉与钢铁塔身
+    heroEngineSites.forEach((s, idx) => {
+      const threshold = (idx / 24) * 0.65
+      const rig = this.builder.buildBrutalistPlanetaryEngine(s.s, 17.0, threshold)
+      const h = this.getMountainElevation(s.r, s.f, heroEngineSites)
       const ptNorm = ENGINE_ARRAY_NORMAL
         .clone()
         .multiplyScalar(EARTH_RADIUS)
@@ -561,19 +612,69 @@ export class EarthSceneEngine {
       rig.group.quaternion.setFromUnitVectors(up, ptNorm)
       this.engineArrayGroup.add(rig.group)
       this.engineArrayRigs.push(rig)
+
+      if (idx < 4) {
+        const pLight = new THREE.PointLight(0x00d8ff, 3.8, 16)
+        pLight.position.copy(ptNorm.clone().multiplyScalar(EARTH_RADIUS + h + 2.2))
+        this.engineArrayGroup.add(pLight)
+      }
     })
 
+    // 铺设 64 座中远景 Instanced 行星发动机塔台与冲天激光束，连绵至地平线尽头！
+    const distantCount = 64
+    const distBaseGeo = new THREE.CylinderGeometry(0.32, 0.68, 0.65, 12)
+    distBaseGeo.translate(0, 0.325, 0)
+    const distBaseMat = new THREE.MeshStandardMaterial({
+      color: 0x26303d,
+      normalMap: this.builder.steelNormal,
+      metalness: 0.86,
+      roughness: 0.4,
+      envMapIntensity: 1.8
+    })
+    const distBasesInst = new THREE.InstancedMesh(distBaseGeo, distBaseMat, distantCount)
+
+    const distBeamGeo = new THREE.CylinderGeometry(0.14, 0.24, 15.5, 12, 1, true)
+    distBeamGeo.translate(0, 7.75, 0)
+    this.distantMatrixBeamMat = this.builder.createCollimatedLaserCoreShader(0.25)
+    const distBeamsInst = new THREE.InstancedMesh(distBeamGeo, this.distantMatrixBeamMat, distantCount)
+
+    const dummy = new THREE.Object3D()
+    for (let i = 0; i < distantCount; i++) {
+      const row = Math.floor(i / 8)
+      const col = (i % 8) - 3.5
+      const df = 7.5 + row * 4.2 + (Math.random() - 0.5) * 1.8
+      const dr = col * 4.4 + (row % 2) * 2.1 + (Math.random() - 0.5) * 1.4
+      const scale = Math.max(0.45, 0.92 - row * 0.055)
+
+      const ptNorm = ENGINE_ARRAY_NORMAL
+        .clone()
+        .multiplyScalar(EARTH_RADIUS)
+        .addScaledVector(tangentR, dr)
+        .addScaledVector(tangentF, df)
+        .normalize()
+
+      dummy.position.copy(ptNorm.clone().multiplyScalar(EARTH_RADIUS + 0.15))
+      dummy.quaternion.setFromUnitVectors(up, ptNorm)
+      dummy.scale.setScalar(scale)
+      dummy.updateMatrix()
+      distBasesInst.setMatrixAt(i, dummy.matrix)
+
+      dummy.position.copy(ptNorm.clone().multiplyScalar(EARTH_RADIUS + 0.15 + 0.6 * scale))
+      dummy.updateMatrix()
+      distBeamsInst.setMatrixAt(i, dummy.matrix)
+    }
+    this.engineArrayGroup.add(distBasesInst, distBeamsInst)
     this.earthGroup.add(this.engineArrayGroup)
 
     // -------------------------------------------------------------------------
-    // Node 3: EQUATORIAL STEERING ARRAY (置于赤道暮光地平线，6 座 30° 倾角转向喷口向黑夜星空齐射)
+    // Node 3: EQUATORIAL STEERING ARRAY (12座重装万向节切向转向发动机矩阵)
     // -------------------------------------------------------------------------
     this.steeringArrayGroup = new THREE.Group()
     const baseEqLon = Math.atan2(EQUATORIAL_NORMAL.x, EQUATORIAL_NORMAL.z)
-    for (let i = 0; i < 8; i++) {
-      const lonAngle = baseEqLon + i * 0.022
+    for (let i = 0; i < 12; i++) {
+      const lonAngle = baseEqLon + i * 0.018
       const dir = new THREE.Vector3(Math.sin(lonAngle), (i % 2 - 0.5) * 0.008, Math.cos(lonAngle)).normalize()
-      const rig = this.builder.buildGimbalSteeringEngineUnit(1.22, 16.5)
+      const rig = this.builder.buildGimbalSteeringEngineUnit(1.25, 17.5)
       rig.group.position.copy(dir.clone().multiplyScalar(EARTH_RADIUS + 0.02))
       rig.group.quaternion.setFromUnitVectors(up, dir)
       this.steeringArrayGroup.add(rig.group)
@@ -582,13 +683,17 @@ export class EarthSceneEngine {
     this.earthGroup.add(this.steeringArrayGroup)
 
     // -------------------------------------------------------------------------
-    // Node 4 & Node 5: EQUATORIAL ANCHOR + TIANZHU APEX STATION (置于赤道晨昏线附近)
+    // Node 4 & Node 5: EQUATORIAL ANCHOR + TIANZHU APEX STATION
     // -------------------------------------------------------------------------
     const anchor = this.builder.buildEquatorialAnchorComplex(42.0)
     this.anchorGroup = anchor.group
     this.climberPods = anchor.climberPods
     this.anchorGroup.position.copy(ANCHOR_NORMAL.clone().multiplyScalar(EARTH_RADIUS))
     this.anchorGroup.quaternion.setFromUnitVectors(up, ANCHOR_NORMAL)
+    // 专属工程探照点光源，突显太空电梯 A 字钢铁桁架的铸铁法线与立体阴影
+    const anchorSpot = new THREE.PointLight(0x38bdf8, 4.5, 28)
+    anchorSpot.position.set(2.5, 5.5, 3.5)
+    this.anchorGroup.add(anchorSpot)
     this.earthGroup.add(this.anchorGroup)
 
     const tianzhu = this.builder.buildTianzhuApexStation()
@@ -603,7 +708,7 @@ export class EarthSceneEngine {
     this.earthGroup.add(this.tianzhuGroup)
 
     // -------------------------------------------------------------------------
-    // Node 6: HABITAT RING AURORA (高轨晨昏线侧，背景是地球发光蓝色大气弧)
+    // Node 6: HABITAT RING AURORA
     // -------------------------------------------------------------------------
     this.habitatGroup = this.builder.buildHabitatRingAurora()
     this.habitatGroup.position.set(-76, 42, 132)
@@ -611,7 +716,7 @@ export class EarthSceneEngine {
     this.earthGroup.add(this.habitatGroup)
 
     // -------------------------------------------------------------------------
-    // Node 7: DEEP SPACE ARRAY (十字翼相控阵中继舰队)
+    // Node 7: DEEP SPACE ARRAY
     // -------------------------------------------------------------------------
     const ds = this.builder.buildDeepSpaceRelayFleet()
     this.deepSpaceGroup = ds.group
@@ -621,7 +726,7 @@ export class EarthSceneEngine {
     this.scene.add(this.deepSpaceGroup)
 
     // -------------------------------------------------------------------------
-    // Node 8: LUNA (阿波罗中灰高对比度陨石坑月球 + 0.35 比例月球发动机)
+    // Node 8: LUNA
     // -------------------------------------------------------------------------
     const luna = this.builder.buildPhotorealisticLuna(27.0)
     this.lunaGroup = luna.group
@@ -631,24 +736,48 @@ export class EarthSceneEngine {
   }
 
   // ============================================================================
-  // 6. 沸腾红巨星太阳 + 专用纯黑日全食遮蔽天体 (打造 00:21-00:23 锐利钻石环日全食！)
+  // 5. 真·狂暴红巨星太阳 (顶点沸腾置换 + 太阳黑子群 + 18道3D磁力线日珥耀斑拱环 + 放射状星芒日冕 + 2000颗CME粒子)
   // ============================================================================
-  private createBoilingRedGiantSunAndEclipseOccluder() {
+  private createBoilingSunWith3DSolarFlares() {
     this.dyingSunGroup = new THREE.Group()
     this.dyingSunGroup.position.copy(SUN_DIR_NORM.clone().multiplyScalar(620))
 
+    // 1. 顶点置换沸腾光球层 + 太阳黑子群 (Sunspots) + 耀斑白炽活动区
     this.dyingSunMat = new THREE.ShaderMaterial({
       uniforms: { uTime: { value: 0 } },
       vertexShader: `
+        uniform float uTime;
         varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vViewDir;
         varying vec3 vPos;
+
+        float hash(vec3 p) {
+          p = fract(p * 0.3183099 + 0.1);
+          p *= 17.0;
+          return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+        }
+        float noise(vec3 x) {
+          vec3 i = floor(x);
+          vec3 f = fract(x);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(
+            mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x),
+                mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+            mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y),
+            f.z
+          );
+        }
+
         void main() {
           vUv = uv;
-          vPos = position;
+          // 顶点实时沸腾起伏置换，彻底打破光滑球体轮廓！
+          float disp = noise(position * 0.09 + uTime * 0.6) * 2.2 + noise(position * 0.25 - uTime * 1.1) * 0.9;
+          vec3 newPos = position + normal * disp;
+          vPos = newPos;
           vNormal = normalize(normalMatrix * normal);
-          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+          vec4 mvPos = modelViewMatrix * vec4(newPos, 1.0);
           vViewDir = normalize(-mvPos.xyz);
           gl_Position = projectionMatrix * mvPos;
         }
@@ -670,7 +799,7 @@ export class EarthSceneEngine {
           vec3 f = fract(x);
           f = f * f * (3.0 - 2.0 * f);
           return mix(
-            mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
+            mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x),
                 mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
             mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
                 mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y),
@@ -679,30 +808,44 @@ export class EarthSceneEngine {
         }
 
         void main() {
-          vec3 p = vPos * 0.08 + vec3(uTime * 0.25);
-          float n = noise(p) * 0.6 + noise(p * 2.4 - uTime * 0.4) * 0.3 + noise(p * 5.0) * 0.1;
-          float limb = pow(1.0 - max(0.0, dot(vNormal, vViewDir)), 1.8);
+          vec3 p = vPos * 0.075 + vec3(uTime * 0.28);
+          float gran1 = noise(p);
+          float gran2 = noise(p * 2.6 - uTime * 0.45);
+          float gran3 = noise(p * 6.5 + uTime * 0.8);
+          float cells = gran1 * 0.5 + gran2 * 0.32 + gran3 * 0.18;
 
-          vec3 crimson = vec3(0.85, 0.15, 0.02);
-          vec3 orangeGranule = vec3(1.18, 0.52, 0.09);
-          vec3 goldFlare = vec3(1.5, 1.22, 0.65);
+          // 太阳黑子暗核 (Sunspot Umbra) 与周围亮斑耀斑区 (Active Faculae/Flares)
+          float sunspot = smoothstep(0.28, 0.16, gran1 * 0.7 + gran2 * 0.3);
+          float activeFlare = smoothstep(0.68, 0.88, cells);
+          float limb = pow(1.0 - max(0.0, dot(vNormal, vViewDir)), 1.6);
 
-          vec3 col = mix(crimson, orangeGranule, smoothstep(0.25, 0.65, n));
-          col = mix(col, goldFlare, smoothstep(0.62, 0.88, n + limb * 0.35));
+          vec3 umbraDark = vec3(0.18, 0.02, 0.0);
+          vec3 crimsonPlasma = vec3(0.95, 0.18, 0.02);
+          vec3 orangeConvection = vec3(1.35, 0.58, 0.08);
+          vec3 blindingFlare = vec3(2.2, 1.85, 1.15);
+
+          vec3 col = mix(crimsonPlasma, orangeConvection, smoothstep(0.32, 0.66, cells));
+          col = mix(col, umbraDark, sunspot * 0.85);
+          col = mix(col, blindingFlare, clamp(activeFlare + limb * 0.45, 0.0, 1.0));
+
           gl_FragColor = vec4(col, 1.0);
         }
       `
     })
 
-    const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(85, 64, 64), this.dyingSunMat)
+    const sunRadius = 85.0
+    const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(sunRadius, 96, 96), this.dyingSunMat)
     this.dyingSunGroup.add(sunMesh)
 
-    this.coronaMat = new THREE.ShaderMaterial({
+    // 2. 18 道真实三维喷发的太阳磁力线日珥与耀斑拱环 (3D Magnetic Solar Prominence & Flare Loops!)
+    this.solarProminenceMat = new THREE.ShaderMaterial({
       uniforms: { uTime: { value: 0 } },
       vertexShader: `
+        varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vViewDir;
         void main() {
+          vUv = uv;
           vNormal = normalize(normalMatrix * normal);
           vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
           vViewDir = normalize(-mvPos.xyz);
@@ -711,28 +854,145 @@ export class EarthSceneEngine {
       `,
       fragmentShader: `
         uniform float uTime;
+        varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vViewDir;
         void main() {
-          float f = pow(clamp(0.82 - dot(vNormal, vViewDir), 0.0, 1.0), 2.8);
-          float rays = 0.85 + 0.15 * sin(vNormal.x * 28.0 + vNormal.y * 28.0 + uTime * 2.2);
-          vec3 col = mix(vec3(1.0, 0.42, 0.08), vec3(1.45, 1.15, 0.65), f);
-          gl_FragColor = vec4(col * rays, f * 0.88);
+          float core = pow(abs(dot(normalize(vNormal), normalize(vViewDir))), 1.6);
+          float plasmaStream = 0.5 + 0.5 * sin(vUv.x * 28.0 - uTime * 7.5) * cos(vUv.y * 12.0 + uTime * 4.0);
+          vec3 col = mix(vec3(1.2, 0.25, 0.02), vec3(2.4, 1.75, 0.75), core * plasmaStream);
+          gl_FragColor = vec4(col, core * (0.45 + plasmaStream * 0.55));
         }
       `,
-      side: THREE.BackSide,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    })
+
+    for (let i = 0; i < 18; i++) {
+      const loopRadius = 14 + (i % 4) * 7.5
+      const tubeRadius = 1.6 + (i % 3) * 0.9
+      const loopGeo = new THREE.TorusGeometry(loopRadius, tubeRadius, 16, 48, Math.PI * 1.15)
+      const loopMesh = new THREE.Mesh(loopGeo, this.solarProminenceMat)
+
+      // 沿球面边缘与各纬度分布日珥巨拱
+      const phi = (i / 18) * Math.PI * 2
+      const tilt = ((i % 5) - 2) * 0.38
+      const dir = new THREE.Vector3(Math.cos(phi) * Math.cos(tilt), Math.sin(tilt), Math.sin(phi) * Math.cos(tilt)).normalize()
+      loopMesh.position.copy(dir.clone().multiplyScalar(sunRadius - 3.0))
+      loopMesh.lookAt(dir.clone().multiplyScalar(sunRadius + 50))
+      loopMesh.rotateZ(i * 0.7)
+      this.dyingSunGroup.add(loopMesh)
+    }
+
+    // 3. 放射状星芒日冕耀斑流 (Anisotropic Radial Coronal Streamers & Flare Rays)
+    this.coronaStreamersMat = new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 } },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        varying vec2 vUv;
+
+        void main() {
+          vec2 p = (vUv - 0.5) * 2.0;
+          float r = length(p);
+          if (r > 1.0 || r < 0.26) discard;
+
+          float ang = atan(p.y, p.x);
+          // 多重频率放射状日冕激波流与耀斑尖刺
+          float rays1 = pow(0.5 + 0.5 * sin(ang * 14.0 + uTime * 0.8 + sin(r * 8.0 - uTime * 2.5)), 3.0);
+          float rays2 = pow(0.5 + 0.5 * cos(ang * 26.0 - uTime * 1.2 + cos(r * 12.0)), 4.0);
+          float radialFalloff = pow(max(0.0, 1.0 - r), 2.2) * smoothstep(0.26, 0.34, r);
+
+          vec3 innerGold = vec3(2.0, 1.35, 0.55);
+          vec3 outerCrimson = vec3(1.1, 0.25, 0.04);
+          vec3 col = mix(innerGold, outerCrimson, (r - 0.28) / 0.72);
+
+          float alpha = radialFalloff * (0.38 + rays1 * 0.45 + rays2 * 0.38);
+          gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.92));
+        }
+      `,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    })
+
+    // 3 张不同倾角交错的巨型日冕耀斑星芒盘 (直径 360 单位)
+    for (let c = 0; c < 3; c++) {
+      const streamerPlane = new THREE.Mesh(new THREE.PlaneGeometry(360, 360), this.coronaStreamersMat)
+      streamerPlane.lookAt(0, 0, 0)
+      streamerPlane.rotateZ((c * Math.PI) / 3)
+      streamerPlane.rotateY((c - 1) * 0.18)
+      this.dyingSunGroup.add(streamerPlane)
+    }
+
+    // 4. 2,000 颗向外高速喷发的日冕物质抛射 (CME) 等离子耀斑粒子
+    const cmeCount = 2000
+    const cmePos = new Float32Array(cmeCount * 3)
+    const cmePhase = new Float32Array(cmeCount)
+    for (let i = 0; i < cmeCount; i++) {
+      const theta = Math.random() * Math.PI * 2
+      const phi = Math.acos(2 * Math.random() - 1)
+      const dir = new THREE.Vector3(
+        Math.sin(phi) * Math.cos(theta),
+        Math.cos(phi),
+        Math.sin(phi) * Math.sin(theta)
+      )
+      cmePos[i * 3] = dir.x
+      cmePos[i * 3 + 1] = dir.y
+      cmePos[i * 3 + 2] = dir.z
+      cmePhase[i] = Math.random()
+    }
+    const cmeGeo = new THREE.BufferGeometry()
+    cmeGeo.setAttribute('position', new THREE.BufferAttribute(cmePos, 3))
+    cmeGeo.setAttribute('aPhase', new THREE.BufferAttribute(cmePhase, 1))
+
+    this.cmeParticlesMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uSprite: { value: this.builder.softGlowSprite }
+      },
+      vertexShader: `
+        attribute float aPhase;
+        uniform float uTime;
+        varying float vLife;
+        void main() {
+          float life = fract(aPhase + uTime * 0.22);
+          vLife = life;
+          vec3 p = normalize(position) * (85.0 + life * 95.0);
+          vec4 mvPos = modelViewMatrix * vec4(p, 1.0);
+          gl_PointSize = clamp((1.0 - life * 0.7) * (180.0 / -mvPos.z), 2.0, 14.0);
+          gl_Position = projectionMatrix * mvPos;
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D uSprite;
+        varying float vLife;
+        void main() {
+          vec4 tex = texture2D(uSprite, gl_PointCoord);
+          vec3 col = mix(vec3(2.0, 1.6, 0.8), vec3(1.0, 0.25, 0.02), vLife);
+          gl_FragColor = vec4(col, tex.a * (1.0 - vLife) * 0.85);
+        }
+      `,
       transparent: true,
       blending: THREE.AdditiveBlending,
       depthWrite: false
     })
-    this.dyingSunGroup.add(new THREE.Mesh(new THREE.SphereGeometry(145, 48, 48), this.coronaMat))
+    this.dyingSunGroup.add(new THREE.Points(cmeGeo, this.cmeParticlesMat))
 
-    // 纯黑日全食遮蔽球体 (Placed in front of the Sun during Chapter I 4.0s-8.8s to guarantee a razor-sharp pitch-black eclipse silhouette with diamond-ring flare on the upper-right rim!)
+    // 5. 纯黑日全食遮蔽天体
     this.eclipseOccluderSphere = new THREE.Mesh(
-      new THREE.SphereGeometry(83.5, 64, 64),
+      new THREE.SphereGeometry(84.0, 64, 64),
       new THREE.MeshBasicMaterial({ color: 0x000000 })
     )
-    // 默认偏移在侧面，进入日食分镜时平滑横移遮挡太阳，右上角留出璀璨钻石环日冕！
     this.eclipseOccluderSphere.position.set(-180, -35, 85)
     this.dyingSunGroup.add(this.eclipseOccluderSphere)
 
@@ -740,7 +1000,7 @@ export class EarthSceneEngine {
   }
 
   // ============================================================================
-  // 7. FIX 5: 低角度仰视逆星空英雄机位 (Low-Angle Hero Shots Against Dark Starry Sky!)
+  // 6. 精确计算每个节点的电影级机位
   // ============================================================================
   private getNodeCameraPose(nodeId: NodeId): { pos: THREE.Vector3; look: THREE.Vector3 } {
     const up = new THREE.Vector3(0, 1, 0)
@@ -753,31 +1013,29 @@ export class EarthSceneEngine {
         }
 
       case 'ENGINE_ARRAY': {
-        // 低角度英雄仰视镜头 (EARTH_RADIUS + 0.85，向上仰视 35° 望向深邃星空背景中的 5 座巨型发动机与冲天等离子柱，复刻 00:03 & 00:28)
         const n = ENGINE_ARRAY_NORMAL
         const f = new THREE.Vector3().crossVectors(up, n).normalize()
         const r = new THREE.Vector3().crossVectors(n, f).normalize()
         const camPos = n
           .clone()
-          .multiplyScalar(EARTH_RADIUS + 0.85)
-          .addScaledVector(f, -2.6)
-          .addScaledVector(r, 0.95)
+          .multiplyScalar(EARTH_RADIUS + 0.88)
+          .addScaledVector(f, -2.5)
+          .addScaledVector(r, 0.92)
         const lookAt = n
           .clone()
-          .multiplyScalar(EARTH_RADIUS + 5.8)
-          .addScaledVector(f, 5.2)
+          .multiplyScalar(EARTH_RADIUS + 5.5)
+          .addScaledVector(f, 5.5)
           .addScaledVector(r, 0.1)
         return { pos: camPos, look: lookAt }
       }
 
       case 'EQUATORIAL': {
-        // 贴近赤道暮光地平线，向上仰视一排 30° 倾角的肋片转向喷口向黑夜星空齐射 (复刻 00:04 & 00:28)
         const baseLon = Math.atan2(EQUATORIAL_NORMAL.x, EQUATORIAL_NORMAL.z)
-        const camLon = baseLon - 0.026
+        const camLon = baseLon - 0.025
         const lookLon = baseLon + 0.055
         const camPos = new THREE.Vector3(
           Math.sin(camLon) * (EARTH_RADIUS + 0.72),
-          -0.45,
+          -0.42,
           Math.cos(camLon) * (EARTH_RADIUS + 0.72)
         )
         const lookAt = new THREE.Vector3(
@@ -789,19 +1047,17 @@ export class EarthSceneEngine {
       }
 
       case 'ANCHOR': {
-        // 掠过赤道发光蓝色大气层边缘，平视太空电梯基座与向上直插星空的 3 根紧绷纳米带 (复刻 00:05)
         const n = ANCHOR_NORMAL
-        const t = new THREE.Vector3(-n.z, 0.12, n.x).normalize()
+        const t = new THREE.Vector3(-n.z, 0.14, n.x).normalize()
         const camPos = n
           .clone()
-          .multiplyScalar(EARTH_RADIUS + 1.65)
-          .addScaledVector(t, 4.8)
-        const lookAt = n.clone().multiplyScalar(EARTH_RADIUS + 3.6)
+          .multiplyScalar(EARTH_RADIUS + 1.85)
+          .addScaledVector(t, 5.2)
+        const lookAt = n.clone().multiplyScalar(EARTH_RADIUS + 3.8)
         return { pos: camPos, look: lookAt }
       }
 
       case 'TIANZHU': {
-        // 对齐 00:06-00:07：背景为发光的地球蓝色弧线，前景展现修长钛桁架脊柱与暗古铜金网格太阳翼
         const n = ANCHOR_NORMAL
         const t = new THREE.Vector3(-n.z, 0.18, n.x).normalize()
         const stPos = n.clone().multiplyScalar(142.0)
@@ -811,7 +1067,6 @@ export class EarthSceneEngine {
       }
 
       case 'HABITAT': {
-        // 对齐 00:08-00:11：展现宽扁倒角香槟钛双同心圆环与扁平圆盘中枢，背景为蔚蓝地球弧面
         const hPos = this.habitatGroup.position.clone()
         const radial = hPos.clone().normalize()
         const side = new THREE.Vector3().crossVectors(radial, up).normalize()
@@ -895,9 +1150,6 @@ export class EarthSceneEngine {
     }
   }
 
-  // ============================================================================
-  // 8. 升级版三幕宽银幕电影序列 (00:21 钻石环日全食 -> 00:24 水平正侧特写高炉点火 -> 00:28 肋片转向喷口仰视齐射)
-  // ============================================================================
   public startThreeChapterStorySequence() {
     this.clearStoryTimers()
     telemetry.storyActive = true
@@ -907,18 +1159,15 @@ export class EarthSceneEngine {
     const up = new THREE.Vector3(0, 1, 0)
     const sunPos = this.dyingSunGroup.position.clone()
 
-    // -------------------------------------------------------------------------
-    // CHAPTER I: THE DYING SUN & DIAMOND-RING ECLIPSE (0s - 9s, 复刻 00:21-00:23)
-    // -------------------------------------------------------------------------
+    // CHAPTER I: THE DYING SUN (0s - 9s)
     this.isEclipseShotActive = true
     telemetry.storyChapter = isZh() ? '第一章 // CHAPTER I' : 'CHAPTER I'
     telemetry.storyTitle = isZh() ? '垂死之日 THE DYING SUN' : 'THE DYING SUN'
     telemetry.storySubtitle = isZh()
-      ? '太阳正在死去，急速膨胀的红巨星即将吞噬地球。'
+      ? '太阳正在死去，狂暴的日珥耀斑与红巨星即将吞噬地球。'
       : 'And the Sun is dying.'
     soundEngine.speak('Chapter One: The Dying Sun.', '第一章，垂死之日。太阳正在死去。')
 
-    // 0s-4s: 直视深空中沸腾的红巨星太阳
     this.eclipseOccluderSphere.position.set(-145, -28, 70)
     const sunCamStart = sunPos.clone().addScaledVector(SUN_DIR_NORM, -280).add(new THREE.Vector3(24, 6, -15))
     const sunCamEnd = sunPos.clone().addScaledVector(SUN_DIR_NORM, -265)
@@ -936,7 +1185,6 @@ export class EarthSceneEngine {
     this.camAnim.useSphericalArc = false
     this.camAnim.active = true
 
-    // 4.0s-8.8s: 纯黑地球剪影横移遮蔽太阳，右上角边缘绽放出夺目的钻石环日冕！(复刻 00:22-00:23)
     this.storyTimers.push(
       window.setTimeout(() => {
         telemetry.storyChapter = ''
@@ -948,9 +1196,7 @@ export class EarthSceneEngine {
       }, 4200)
     )
 
-    // -------------------------------------------------------------------------
-    // CHAPTER II: IGNITION (9s - 19s, 复刻 00:24-00:25 旗舰行星发动机水平正侧面特写 + 高炉橙光 + 冲天等离子巨柱)
-    // -------------------------------------------------------------------------
+    // CHAPTER II: IGNITION (9s - 19s)
     this.storyTimers.push(
       window.setTimeout(() => {
         this.isEclipseShotActive = false
@@ -959,8 +1205,8 @@ export class EarthSceneEngine {
         telemetry.storyChapter = isZh() ? '第二章 // CHAPTER II' : 'CHAPTER II'
         telemetry.storyTitle = isZh() ? '苍穹点火 IGNITION' : 'IGNITION'
         telemetry.storySubtitle = isZh()
-          ? '行星发动机高炉核心点火，巨型等离子光柱与电离火花直冲云霄。'
-          : 'Planetary engine furnace ignites as a colossal plasma pillar erupts into the heavens.'
+          ? '73 座连绵至天际线的行星发动机矩阵同步点火，等离子激光刺穿苍穹。'
+          : 'Planetary engine matrix ignites across the horizon as plasma lasers pierce the heavens.'
         soundEngine.speak('Chapter Two: Ignition.', '第二章，苍穹点火。')
 
         this.dominoIgnitionProgress = 0.0
@@ -972,7 +1218,6 @@ export class EarthSceneEngine {
           )
         }
 
-        // 严格复刻 00:24-00:25：正对 0 号旗舰发动机的水平正侧面特写 (Dead-On Horizontal Profile Close-up)
         const n = ENGINE_ARRAY_NORMAL
         const f = new THREE.Vector3().crossVectors(up, n).normalize()
         const r = new THREE.Vector3().crossVectors(n, f).normalize()
@@ -987,8 +1232,8 @@ export class EarthSceneEngine {
           .multiplyScalar(EARTH_RADIUS + 1.15)
           .addScaledVector(f, -2.85)
           .addScaledVector(r, 0.45)
-        const profileLookStart = n.clone().multiplyScalar(EARTH_RADIUS + 1.15).addScaledVector(f, 0.2)
-        const profileLookEnd = n.clone().multiplyScalar(EARTH_RADIUS + 2.6).addScaledVector(f, 0.4)
+        const profileLookStart = n.clone().multiplyScalar(EARTH_RADIUS + 1.8).addScaledVector(f, 2.2)
+        const profileLookEnd = n.clone().multiplyScalar(EARTH_RADIUS + 4.8).addScaledVector(f, 4.5)
 
         this.camera.position.copy(profileCamStart)
         this.baseCamPos.copy(profileCamStart)
@@ -1005,9 +1250,7 @@ export class EarthSceneEngine {
       }, 9000)
     )
 
-    // -------------------------------------------------------------------------
-    // CHAPTER III: TURNING THE WORLD (19s - 30s, 复刻 00:26 大陆波浪点亮 -> 00:28 5座肋片转向喷口低角度仰视齐射)
-    // -------------------------------------------------------------------------
+    // CHAPTER III: TURNING THE WORLD (19s - 30s)
     this.storyTimers.push(
       window.setTimeout(() => {
         telemetry.storyChapter = ''
@@ -1033,7 +1276,6 @@ export class EarthSceneEngine {
       }, 19000)
     )
 
-    // 24.5s: 直接切至复刻 00:28 的低角度倾斜仰视特写——5座带36肋片与24道青色狭缝的转向喷口在星空下轰鸣！
     this.storyTimers.push(
       window.setTimeout(() => {
         telemetry.storyChapter = isZh() ? '第三章 // CHAPTER III' : 'CHAPTER III'
@@ -1114,7 +1356,7 @@ export class EarthSceneEngine {
     const targets: { id: NodeId; name: string; alt: string; pos: THREE.Vector3 }[] = [
       {
         id: 'ENGINE_ARRAY',
-        name: telemetry.lang === 'ZH' ? '一号推进阵列' : 'ENGINE ARRAY 01',
+        name: telemetry.lang === 'ZH' ? '一号推进阵列 (73座)' : 'ENGINE ARRAY 01',
         alt: 'ALT: 11.2 KM',
         pos: ENGINE_ARRAY_NORMAL.clone().multiplyScalar(EARTH_RADIUS)
       },
@@ -1149,9 +1391,6 @@ export class EarthSceneEngine {
     })
   }
 
-  // ============================================================================
-  // 9. 主渲染循环 (含距离 LOD 剔除局部雪山补丁 + 四层体积/GPU粒子尾焰更新)
-  // ============================================================================
   private animate = () => {
     this.rafId = requestAnimationFrame(this.animate)
     const now = performance.now()
@@ -1159,12 +1398,10 @@ export class EarthSceneEngine {
 
     this.updateCameraTransition(now)
 
-    // 关键修复：根据相机距地心距离动态 LOD 隐藏局部 42x42 地形网格，全球视角下 100% 无缝绝无方形补丁凸出！
     const camDist = this.camera.position.length()
     this.engineArrayGroup.visible = camDist < 138.0
     this.steeringArrayGroup.visible = camDist < 138.0
 
-    // 第一章日全食平滑移动遮蔽天体，形成右上角钻石环日冕
     if (this.isEclipseShotActive && this.eclipseOccluderSphere) {
       this.eclipseOccluderSphere.position.lerp(new THREE.Vector3(-4.2, -2.6, 18.0), 0.022)
     }
@@ -1185,25 +1422,36 @@ export class EarthSceneEngine {
     this.globalNeedlesMat.uniforms.uWaveProgress.value = this.globalWaveProgress
     this.globalNeedlesMat.uniforms.uOverclock.value = isOverclock
 
+    if (this.distantMatrixBeamMat) {
+      this.distantMatrixBeamMat.uniforms.uTime.value = elapsed
+      this.distantMatrixBeamMat.uniforms.uThrust.value = thrustNorm
+      this.distantMatrixBeamMat.uniforms.uOverclock.value = isOverclock
+      this.distantMatrixBeamMat.uniforms.uIgnitionProgress.value = this.dominoIgnitionProgress
+    }
+
     const lengthScale = isOverclock > 0.5 ? 1.25 : 1.0
     const blink = Math.sin(elapsed * 7.5) > 0.1
 
     const updateEngineList = (list: BrutalistEngineRig[], igProg: number) => {
       list.forEach((rig) => {
-        rig.coreColumnMat.uniforms.uTime.value = elapsed
-        rig.coreColumnMat.uniforms.uThrust.value = thrustNorm
-        rig.coreColumnMat.uniforms.uOverclock.value = isOverclock
-        rig.coreColumnMat.uniforms.uIgnitionProgress.value = igProg
+        rig.coreLaserMat.uniforms.uTime.value = elapsed
+        rig.coreLaserMat.uniforms.uThrust.value = thrustNorm
+        rig.coreLaserMat.uniforms.uOverclock.value = isOverclock
+        rig.coreLaserMat.uniforms.uIgnitionProgress.value = igProg
 
-        rig.godRayPlanesMat.uniforms.uTime.value = elapsed
-        rig.godRayPlanesMat.uniforms.uThrust.value = thrustNorm
-        rig.godRayPlanesMat.uniforms.uOverclock.value = isOverclock
-        rig.godRayPlanesMat.uniforms.uIgnitionProgress.value = igProg
+        rig.vortexSheathMat.uniforms.uTime.value = elapsed
+        rig.vortexSheathMat.uniforms.uThrust.value = thrustNorm
+        rig.vortexSheathMat.uniforms.uOverclock.value = isOverclock
+        rig.vortexSheathMat.uniforms.uIgnitionProgress.value = igProg
 
-        rig.ionParticlesMat.uniforms.uTime.value = elapsed
-        rig.ionParticlesMat.uniforms.uThrust.value = thrustNorm
-        rig.ionParticlesMat.uniforms.uOverclock.value = isOverclock
-        rig.ionParticlesMat.uniforms.uIgnitionProgress.value = igProg
+        rig.shockRingMat.uniforms.uTime.value = elapsed
+        rig.shockRingMat.uniforms.uOverclock.value = isOverclock
+        rig.shockRingMat.uniforms.uIgnitionProgress.value = igProg
+
+        rig.ionSparksMat.uniforms.uTime.value = elapsed
+        rig.ionSparksMat.uniforms.uThrust.value = thrustNorm
+        rig.ionSparksMat.uniforms.uOverclock.value = isOverclock
+        rig.ionSparksMat.uniforms.uIgnitionProgress.value = igProg
 
         rig.plumeAssembly.scale.set(1.0, lengthScale, 1.0)
         rig.strobes.forEach((s) => (s.visible = blink))
@@ -1214,7 +1462,7 @@ export class EarthSceneEngine {
     updateEngineList(this.lunarRigs, 1.0)
 
     this.climberPods.forEach((pod, idx) => {
-      pod.position.y = 1.5 + ((elapsed * 0.14 + idx * 0.45) % 1.0) * 32.0
+      pod.position.y = 1.6 + ((elapsed * 0.14 + idx * 0.48) % 1.0) * 8.5
     })
     if (this.tianzhuAnim) {
       this.tianzhuAnim.upper.rotation.y = elapsed * 0.32
@@ -1225,8 +1473,12 @@ export class EarthSceneEngine {
     this.habitatGroup.rotation.z = elapsed * 0.15
     this.cloudsMesh.rotation.y = elapsed * 0.004
     this.deepSpaceLaserMat.uniforms.uTime.value = elapsed
+
+    // 更新太阳沸腾光球、3D 日珥磁环、放射状耀斑冕流与 CME 抛射粒子
     this.dyingSunMat.uniforms.uTime.value = elapsed
-    this.coronaMat.uniforms.uTime.value = elapsed
+    this.solarProminenceMat.uniforms.uTime.value = elapsed
+    this.coronaStreamersMat.uniforms.uTime.value = elapsed
+    this.cmeParticlesMat.uniforms.uTime.value = elapsed
 
     if (telemetry.currentMode !== 'EXPLORE') {
       const bx = Math.sin(elapsed * 0.65) * 0.08
@@ -1246,7 +1498,7 @@ export class EarthSceneEngine {
       this.baseCamPos.copy(this.camera.position)
     }
 
-    this.bloomPass.strength = telemetry.bloomEnabled ? (isOverclock > 0.5 ? 0.80 : 0.55) : 0.0
+    this.bloomPass.strength = telemetry.bloomEnabled ? (isOverclock > 0.5 ? 0.80 : 0.58) : 0.0
 
     this.camera.lookAt(this.lookAtTarget)
     this.updateProjectedReticles()
