@@ -33,7 +33,7 @@ export class EarthSceneEngine {
   private steeringArrayGroup!: THREE.Group
   private steeringRigs: BrutalistEngineRig[] = []
   private anchorGroup!: THREE.Group
-  private climberPods: THREE.Group[] = []
+  private climberTrains: THREE.Group[] = []
   private tianzhuGroup!: THREE.Group
   private tianzhuAnim!: { upper: THREE.Group; lower: THREE.Group; strobes: THREE.Mesh[] }
   private habitatGroup!: THREE.Group
@@ -489,21 +489,22 @@ export class EarthSceneEngine {
   // 4. 构建全部 8 大高精度 CAD 空间巨构节点（含喜马拉雅雪山地形与冰雾）
   // ============================================================================
   private getMountainElevation(lx: number, ly: number, engineSites: { f: number; r: number }[]): number {
-    // 若在任意发动机底座半径内，平滑削平为坚固岩床台地，确保发动机 100% 扎实坐落在山体上
     let minEngineDist = 999
     for (const s of engineSites) {
       const d = Math.hypot(lx - s.r, ly - s.f)
       if (d < minEngineDist) minEngineDist = d
     }
 
-    // 多倍频山脊噪声 (Multi-octave Ridged Mountain Noise)
-    const ridge1 = 1.0 - Math.abs(Math.sin(lx * 0.22 + ly * 0.14))
-    const ridge2 = 1.0 - Math.abs(Math.cos(lx * 0.45 - ly * 0.38))
-    const detail = Math.sin(lx * 1.3) * Math.cos(ly * 1.3) * 0.25
-    const rawMountain = (ridge1 * 1.45 + ridge2 * 0.85 + detail) * 1.35
+    // 4 阶高精度多倍频山脊分形噪声 (Ridged Multifractal Himalayan Noise)
+    const o1 = 1.0 - Math.abs(Math.sin(lx * 0.18 + ly * 0.12))
+    const o2 = 1.0 - Math.abs(Math.cos(lx * 0.38 - ly * 0.32 + 0.5))
+    const o3 = 1.0 - Math.abs(Math.sin(lx * 0.82 + ly * 0.74 - 1.2))
+    const o4 = Math.sin(lx * 1.7) * Math.cos(ly * 1.7) * 0.18
+    const rawMountain = (Math.pow(o1, 2.2) * 1.6 + Math.pow(o2, 1.8) * 0.9 + o3 * 0.45 + o4) * 1.15
 
-    const plateauMask = THREE.MathUtils.smoothstep(minEngineDist, 0.8, 2.6)
-    return THREE.MathUtils.lerp(0.65, rawMountain, plateauMask)
+    // 发动机地基平滑下压与基座岩石台地
+    const plateauMask = THREE.MathUtils.smoothstep(minEngineDist, 0.9, 2.5)
+    return THREE.MathUtils.lerp(0.58, rawMountain, plateauMask)
   }
 
   private createAllEightDetailedMegastructures() {
@@ -513,7 +514,7 @@ export class EarthSceneEngine {
     // Node 2: ENGINE ARRAY 01 (晨昏线阳光斜射下的喜马拉雅雪山地形 + 18 座野兽派 7 联装聚变发动机 + 冰雾)
     // -------------------------------------------------------------------------
     this.engineArrayGroup = new THREE.Group()
-    // 放在向阳晨昏线附近 (0.22, 0.66, 0.72)，使太阳光斜射照亮雪山棱线与发动机 24 肋片！
+    // 放在向阳晨昏线附近 (0.22, 0.66, 0.72)，使太阳光斜射照亮雪山棱线与发动机 32 肋片！
     const arrayNormal = new THREE.Vector3(0.22, 0.66, 0.72).normalize()
     const tangentF = new THREE.Vector3().crossVectors(up, arrayNormal).normalize()
     const tangentR = new THREE.Vector3().crossVectors(arrayNormal, tangentF).normalize()
@@ -539,46 +540,101 @@ export class EarthSceneEngine {
       { f: 19.0, r: 2.6, s: 0.85 }
     ]
 
-    // 构建 160x160 贴合地球曲率的冰雪喜马拉雅山脉网格
-    const terrainGeo = new THREE.PlaneGeometry(52, 52, 160, 160)
-    const posAttr = terrainGeo.attributes.position
-    const colorsAttr = new Float32Array(posAttr.count * 3)
+    // 构建贴合地球精确曲率 (EARTH_RADIUS = 100) 的极坐标同心圆弧球面扇区 (彻底消除 4 角悬空方形补丁！)
+    const numRings = 72
+    const numRadials = 96
+    const maxRadius = 25.0
+    const vertexCount = 1 + numRings * numRadials
+    const positions = new Float32Array(vertexCount * 3)
+    const colors = new Float32Array(vertexCount * 3)
+    const indices: number[] = []
 
-    for (let i = 0; i < posAttr.count; i++) {
-      const lx = posAttr.getX(i)
-      const ly = posAttr.getY(i)
-      const edgeFade = 1.0 - THREE.MathUtils.smoothstep(Math.hypot(lx, ly), 18.0, 26.0)
-      const h = this.getMountainElevation(lx, ly, engineSites) * edgeFade
+    // 顶点 0：中心点 (lx = 0, ly = 0)
+    const centerElev = this.getMountainElevation(0, 0, engineSites)
+    const centerWorld = arrayNormal.clone().multiplyScalar(EARTH_RADIUS + centerElev)
+    positions[0] = centerWorld.x
+    positions[1] = centerWorld.y
+    positions[2] = centerWorld.z
+    const centerSnow = THREE.MathUtils.clamp((centerElev - 0.4) / 1.5, 0.0, 1.0)
+    colors[0] = THREE.MathUtils.lerp(0.18, 0.94, Math.pow(centerSnow, 1.4))
+    colors[1] = THREE.MathUtils.lerp(0.24, 0.97, Math.pow(centerSnow, 1.4))
+    colors[2] = THREE.MathUtils.lerp(0.32, 1.0, Math.pow(centerSnow, 1.4))
 
-      const worldPt = arrayNormal
-        .clone()
-        .multiplyScalar(EARTH_RADIUS)
-        .addScaledVector(tangentR, lx)
-        .addScaledVector(tangentF, ly)
-        .normalize()
-        .multiplyScalar(EARTH_RADIUS + h)
-      posAttr.setXYZ(i, worldPt.x, worldPt.y, worldPt.z)
+    // 同心圆环顶点
+    for (let r = 1; r <= numRings; r++) {
+      const normR = r / numRings
+      const radius = normR * maxRadius
+      // 边缘平滑衰减到 0，边缘环微下潜 -0.04，确保与地球大球体 100% 无缝咬合
+      const edgeFade = 1.0 - THREE.MathUtils.smoothstep(normR, 0.58, 1.0)
+      const dip = normR > 0.98 ? -0.04 : 0.0
 
-      // 高海拔纯白积雪 vs 陡坡深灰蓝玄武岩冰壁顶点着色
-      const snowRatio = THREE.MathUtils.clamp((h - 0.35) / 1.4, 0.15, 1.0)
-      colorsAttr[i * 3] = THREE.MathUtils.lerp(0.22, 0.88, snowRatio)
-      colorsAttr[i * 3 + 1] = THREE.MathUtils.lerp(0.30, 0.94, snowRatio)
-      colorsAttr[i * 3 + 2] = THREE.MathUtils.lerp(0.42, 1.0, snowRatio)
+      for (let k = 0; k < numRadials; k++) {
+        const theta = (k / numRadials) * Math.PI * 2
+        const lx = radius * Math.cos(theta)
+        const ly = radius * Math.sin(theta)
+
+        const rawElev = this.getMountainElevation(lx, ly, engineSites)
+        const h = rawElev * edgeFade + dip
+
+        const ptNorm = arrayNormal
+          .clone()
+          .multiplyScalar(EARTH_RADIUS)
+          .addScaledVector(tangentR, lx)
+          .addScaledVector(tangentF, ly)
+          .normalize()
+        const worldPt = ptNorm.multiplyScalar(EARTH_RADIUS + h)
+
+        const vIdx = 1 + (r - 1) * numRadials + k
+        positions[vIdx * 3] = worldPt.x
+        positions[vIdx * 3 + 1] = worldPt.y
+        positions[vIdx * 3 + 2] = worldPt.z
+
+        const snowRatio = THREE.MathUtils.clamp((h - 0.35) / 1.5, 0.0, 1.0)
+        colors[vIdx * 3] = THREE.MathUtils.lerp(0.18, 0.94, Math.pow(snowRatio, 1.4))
+        colors[vIdx * 3 + 1] = THREE.MathUtils.lerp(0.24, 0.97, Math.pow(snowRatio, 1.4))
+        colors[vIdx * 3 + 2] = THREE.MathUtils.lerp(0.32, 1.0, Math.pow(snowRatio, 1.4))
+      }
     }
-    terrainGeo.setAttribute('color', new THREE.BufferAttribute(colorsAttr, 3))
+
+    // 索引三角面装配
+    // 第 1 环与中心点连接
+    for (let k = 0; k < numRadials; k++) {
+      const nextK = (k + 1) % numRadials
+      indices.push(0, 1 + k, 1 + nextK)
+    }
+    // 相邻环之间生成四边形三角对
+    for (let r = 1; r < numRings; r++) {
+      const ringStart = 1 + (r - 1) * numRadials
+      const nextRingStart = 1 + r * numRadials
+      for (let k = 0; k < numRadials; k++) {
+        const nextK = (k + 1) % numRadials
+        const a = ringStart + k
+        const b = ringStart + nextK
+        const c = nextRingStart + k
+        const d = nextRingStart + nextK
+
+        indices.push(a, c, b)
+        indices.push(b, c, d)
+      }
+    }
+
+    const terrainGeo = new THREE.BufferGeometry()
+    terrainGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    terrainGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+    terrainGeo.setIndex(indices)
     terrainGeo.computeVertexNormals()
 
     const snowMountainMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      bumpMap: this.builder.armorBump,
-      bumpScale: 0.08,
-      roughness: 0.65,
-      metalness: 0.12,
-      envMapIntensity: 1.4
+      bumpMap: this.builder.pbrMaps.bumpMap,
+      bumpScale: 0.12,
+      roughness: 0.68,
+      metalness: 0.15,
+      envMapIntensity: 1.6
     })
     this.engineArrayGroup.add(new THREE.Mesh(terrainGeo, snowMountainMat))
 
-    // 将 18 座 24 肋片野兽派行星发动机锚定在山脉台地上
+    // 将 18 座 32 肋片野兽派行星发动机锚定在山脉台地上
     engineSites.forEach((s, idx) => {
       const threshold = (idx / engineSites.length) * 0.82
       const rig = this.builder.buildBrutalistPlanetaryEngine(s.s, 14.5, threshold)
@@ -646,7 +702,7 @@ export class EarthSceneEngine {
     const elevatorNormal = new THREE.Vector3(0.58, 0.0, 0.814).normalize()
     const anchor = this.builder.buildEquatorialAnchorComplex(42.0)
     this.anchorGroup = anchor.group
-    this.climberPods = anchor.climberPods
+    this.climberTrains = anchor.climberTrains
     this.anchorGroup.position.copy(elevatorNormal.clone().multiplyScalar(EARTH_RADIUS))
     this.anchorGroup.quaternion.setFromUnitVectors(up, elevatorNormal)
     this.earthGroup.add(this.anchorGroup)
@@ -1198,7 +1254,7 @@ export class EarthSceneEngine {
     updateEngineList(this.lunarRigs, 1.0)
 
     // 太空电梯轿厢攀升、天柱号双环反向旋转、极光号自转
-    this.climberPods.forEach((pod, idx) => {
+    this.climberTrains.forEach((pod, idx) => {
       pod.position.y = 1.6 + ((elapsed * 0.14 + idx * 0.33) % 1.0) * 32.0
     })
     if (this.tianzhuAnim) {

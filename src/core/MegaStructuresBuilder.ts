@@ -6,14 +6,21 @@ export interface BrutalistEngineRig {
   plumeAssembly: THREE.Group
   coreRayMat: THREE.ShaderMaterial
   sheathMat: THREE.ShaderMaterial
+  shockRingMesh?: THREE.Mesh
+  crownFlareMesh?: THREE.Mesh
   strobes: THREE.Mesh[]
 }
 
+export interface IndustrialPBRMaps {
+  map: THREE.CanvasTexture
+  bumpMap: THREE.CanvasTexture
+  roughnessMap: THREE.CanvasTexture
+  emissiveMap: THREE.CanvasTexture
+}
+
 export class MegaStructuresBuilder {
-  public armorAlbedo: THREE.CanvasTexture
-  public armorBump: THREE.CanvasTexture
-  public walkwayLightsTex: THREE.CanvasTexture
-  public solarArrayTex: THREE.CanvasTexture
+  public pbrMaps: IndustrialPBRMaps
+  public solarWingMaps: { map: THREE.CanvasTexture; bump: THREE.CanvasTexture }
   public frozenEarthDayTex: THREE.CanvasTexture
   public frozenEarthBumpTex: THREE.CanvasTexture
   public frozenEarthNightTex: THREE.CanvasTexture
@@ -23,11 +30,8 @@ export class MegaStructuresBuilder {
   public mistSpriteTex: THREE.CanvasTexture
 
   constructor() {
-    const armor = this.createBrutalistArmorTextures()
-    this.armorAlbedo = armor.albedo
-    this.armorBump = armor.bump
-    this.walkwayLightsTex = this.createWarmWalkwayWindowsTexture()
-    this.solarArrayTex = this.createSapphireSolarCellTexture()
+    this.pbrMaps = this.createIndustrialPBRMaps()
+    this.solarWingMaps = this.createISSSolarWingMaps()
     const earthTex = this.createFrozenWanderingEarthTextures()
     this.frozenEarthDayTex = earthTex.day
     this.frozenEarthBumpTex = earthTex.bump
@@ -39,13 +43,187 @@ export class MegaStructuresBuilder {
   }
 
   // ============================================================================
-  // 1. 生成高动态 Studio/Space HDR 环境贴图 (解决金属材质死黑问题！)
+  // 1. PROCEDURAL MICRO-DETAIL PBR TEXTURE GENERATOR (ILM / WETA FX STANDARD)
   // ============================================================================
+  public createIndustrialPBRMaps(): IndustrialPBRMaps {
+    const size = 1024
+    // 1. Base Albedo / Map
+    const cAlbedo = document.createElement('canvas')
+    cAlbedo.width = size
+    cAlbedo.height = size
+    const ctxA = cAlbedo.getContext('2d')!
+
+    // 2. Bump Map
+    const cBump = document.createElement('canvas')
+    cBump.width = size
+    cBump.height = size
+    const ctxB = cBump.getContext('2d')!
+
+    // 3. Roughness Map
+    const cRough = document.createElement('canvas')
+    cRough.width = size
+    cRough.height = size
+    const ctxR = cRough.getContext('2d')!
+
+    // 4. Emissive Map (Thousands of inspection windows & warning stencils)
+    const cEmiss = document.createElement('canvas')
+    cEmiss.width = size
+    cEmiss.height = size
+    const ctxE = cEmiss.getContext('2d')!
+
+    // Base backgrounds
+    ctxA.fillStyle = '#2c333f'
+    ctxA.fillRect(0, 0, size, size)
+    ctxB.fillStyle = '#808080'
+    ctxB.fillRect(0, 0, size, size)
+    ctxR.fillStyle = '#555555'
+    ctxR.fillRect(0, 0, size, size)
+    ctxE.fillStyle = '#000000'
+    ctxE.fillRect(0, 0, size, size)
+
+    const tileSize = 64
+    for (let y = 0; y < size; y += tileSize) {
+      for (let x = 0; x < size; x += tileSize) {
+        const randTone = ((x * 13 + y * 29) % 23) / 23
+        const shade = Math.floor(40 + randTone * 25)
+        ctxA.fillStyle = `rgb(${shade}, ${shade + 6}, ${shade + 14})`
+        ctxA.fillRect(x + 1, y + 1, tileSize - 2, tileSize - 2)
+
+        // Seams in bump
+        ctxB.fillStyle = '#404040'
+        ctxB.fillRect(x, y, tileSize, 2)
+        ctxB.fillRect(x, y, 2, tileSize)
+        ctxB.fillStyle = '#a0a0a0'
+        ctxB.fillRect(x + 2, y + 2, tileSize - 4, tileSize - 4)
+
+        // Roughness variation
+        const roughVal = Math.floor(65 + randTone * 40)
+        ctxR.fillStyle = `rgb(${roughVal}, ${roughVal}, ${roughVal})`
+        ctxR.fillRect(x + 1, y + 1, tileSize - 2, tileSize - 2)
+
+        // Rivets along plate edges
+        for (let r = 8; r < tileSize; r += 16) {
+          ctxB.fillStyle = '#ffffff'
+          ctxB.fillRect(x + r, y + 3, 2, 2)
+          ctxB.fillRect(x + 3, y + r, 2, 2)
+        }
+
+        // Thousands of microscopic warm-amber (#ffaa44) & cyan (#00e5ff) inspection window strips
+        if ((x + y) % 128 === 0) {
+          for (let row = 10; row < tileSize - 10; row += 12) {
+            for (let col = 8; col < tileSize - 8; col += 7) {
+              if (Math.random() > 0.28) {
+                const isCyan = (x * y + col) % 7 === 0
+                const winColor = isCyan ? '#00e5ff' : '#ffaa44'
+                ctxE.fillStyle = winColor
+                ctxE.fillRect(x + col, y + row, 4, 2)
+                ctxA.fillStyle = winColor
+                ctxA.fillRect(x + col, y + row, 4, 2)
+              }
+            }
+          }
+        }
+
+        // Hazard stencils & warning markers
+        if ((x * 7 + y * 3) % 256 === 0) {
+          ctxE.fillStyle = '#ff3344'
+          ctxE.fillRect(x + 12, y + tileSize - 8, 14, 3)
+          ctxE.fillStyle = '#ffbb00'
+          ctxE.fillRect(x + 32, y + tileSize - 8, 18, 3)
+        }
+      }
+    }
+
+    const map = new THREE.CanvasTexture(cAlbedo)
+    map.wrapS = THREE.RepeatWrapping
+    map.wrapT = THREE.RepeatWrapping
+    map.repeat.set(4, 4)
+
+    const bumpMap = new THREE.CanvasTexture(cBump)
+    bumpMap.wrapS = THREE.RepeatWrapping
+    bumpMap.wrapT = THREE.RepeatWrapping
+    bumpMap.repeat.set(4, 4)
+
+    const roughnessMap = new THREE.CanvasTexture(cRough)
+    roughnessMap.wrapS = THREE.RepeatWrapping
+    roughnessMap.wrapT = THREE.RepeatWrapping
+    roughnessMap.repeat.set(4, 4)
+
+    const emissiveMap = new THREE.CanvasTexture(cEmiss)
+    emissiveMap.wrapS = THREE.RepeatWrapping
+    emissiveMap.wrapT = THREE.RepeatWrapping
+    emissiveMap.repeat.set(4, 4)
+
+    return { map, bumpMap, roughnessMap, emissiveMap }
+  }
+
+  // ISS 级高精度双面深蓝硅光伏与铜导电母线贴图
+  private createISSSolarWingMaps(): { map: THREE.CanvasTexture; bump: THREE.CanvasTexture } {
+    const size = 512
+    const cA = document.createElement('canvas')
+    cA.width = size
+    cA.height = size
+    const ctxA = cA.getContext('2d')!
+
+    const cB = document.createElement('canvas')
+    cB.width = size
+    cB.height = size
+    const ctxB = cB.getContext('2d')!
+
+    ctxA.fillStyle = '#071224'
+    ctxA.fillRect(0, 0, size, size)
+    ctxB.fillStyle = '#808080'
+    ctxB.fillRect(0, 0, size, size)
+
+    // 细密硅光子单晶晶胞 (#0f2a4a)
+    const cellW = 16
+    const cellH = 32
+    for (let y = 0; y < size; y += cellH) {
+      for (let x = 0; x < size; x += cellW) {
+        ctxA.fillStyle = (x / cellW + y / cellH) % 2 === 0 ? '#0b1d38' : '#08172e'
+        ctxA.fillRect(x + 1, y + 1, cellW - 2, cellH - 2)
+
+        ctxB.fillStyle = '#a0a0a0'
+        ctxB.fillRect(x + 1, y + 1, cellW - 2, cellH - 2)
+      }
+    }
+
+    // 亮银/铜色汇流条 (Silver / Copper Busbars)
+    ctxA.strokeStyle = '#38bdf8'
+    ctxA.lineWidth = 1
+    for (let x = cellW / 2; x < size; x += cellW) {
+      ctxA.beginPath()
+      ctxA.moveTo(x, 0)
+      ctxA.lineTo(x, size)
+      ctxA.stroke()
+    }
+
+    ctxA.strokeStyle = '#d97706'
+    ctxA.lineWidth = 3
+    for (let y = cellH; y < size; y += cellH * 2) {
+      ctxA.beginPath()
+      ctxA.moveTo(0, y)
+      ctxA.lineTo(size, y)
+      ctxA.stroke()
+    }
+
+    const map = new THREE.CanvasTexture(cA)
+    map.wrapS = THREE.RepeatWrapping
+    map.wrapT = THREE.RepeatWrapping
+    map.repeat.set(2, 2)
+
+    const bump = new THREE.CanvasTexture(cB)
+    bump.wrapS = THREE.RepeatWrapping
+    bump.wrapT = THREE.RepeatWrapping
+    bump.repeat.set(2, 2)
+
+    return { map, bump }
+  }
+
+  // 高动态 Studio/Space HDR 环境贴图探针
   public static createStudioSpaceHDRI(renderer: THREE.WebGLRenderer): THREE.Texture {
     const pmrem = new THREE.PMREMGenerator(renderer)
     pmrem.compileEquirectangularShader()
-
-    // 融合 RoomEnvironment 的高光反射盒子与太空冷蓝/暖阳多光源球体
     const envScene = new RoomEnvironment()
     const skyMat = new THREE.ShaderMaterial({
       side: THREE.BackSide,
@@ -70,7 +248,6 @@ export class MegaStructuresBuilder {
       `
     })
     envScene.add(new THREE.Mesh(new THREE.SphereGeometry(40, 32, 16), skyMat))
-
     const envMap = pmrem.fromScene(envScene, 0.03).texture
     pmrem.dispose()
     return envMap
@@ -97,22 +274,20 @@ export class MegaStructuresBuilder {
     c.height = 128
     const ctx = c.getContext('2d')!
     const g = ctx.createRadialGradient(128, 64, 8, 128, 64, 115)
-    g.addColorStop(0, 'rgba(185, 225, 255, 0.42)')
-    g.addColorStop(0.5, 'rgba(120, 185, 245, 0.18)')
+    g.addColorStop(0, 'rgba(185, 225, 255, 0.38)')
+    g.addColorStop(0.5, 'rgba(120, 185, 245, 0.16)')
     g.addColorStop(1, 'rgba(0, 0, 0, 0.0)')
     ctx.fillStyle = g
     ctx.fillRect(0, 0, 256, 128)
     return new THREE.CanvasTexture(c)
   }
 
-  // 高反照率冰封地球贴图（冰川白/冰晶蓝大陆 + 深蓝宝石海洋 + 暗夜金色地下城脉络）
   private createFrozenWanderingEarthTextures() {
     const dayC = document.createElement('canvas')
     dayC.width = 2048
     dayC.height = 1024
     const dCtx = dayC.getContext('2d')!
 
-    // 深宝石蓝冰海基底
     const seaGrad = dCtx.createLinearGradient(0, 0, 0, 1024)
     seaGrad.addColorStop(0, '#adc9e6')
     seaGrad.addColorStop(0.18, '#173f73')
@@ -136,13 +311,12 @@ export class MegaStructuresBuilder {
     nCtx.fillStyle = '#000000'
     nCtx.fillRect(0, 0, 2048, 1024)
 
-    // 冰封大陆与高对比度雪山山脉
     const landmasses = [
-      { x: 1240, y: 290, rx: 420, ry: 175 }, // 亚欧冰原大陆
-      { x: 1060, y: 540, rx: 165, ry: 195 }, // 非洲大陆
-      { x: 450, y: 310, rx: 250, ry: 155 },  // 北美冰原大陆
-      { x: 610, y: 660, rx: 120, ry: 190 },  // 南美大陆
-      { x: 1590, y: 690, rx: 130, ry: 95 }   // 澳洲大陆
+      { x: 1240, y: 290, rx: 420, ry: 175 },
+      { x: 1060, y: 540, rx: 165, ry: 195 },
+      { x: 450, y: 310, rx: 250, ry: 155 },
+      { x: 610, y: 660, rx: 120, ry: 190 },
+      { x: 1590, y: 690, rx: 130, ry: 95 }
     ]
 
     landmasses.forEach((m) => {
@@ -154,23 +328,21 @@ export class MegaStructuresBuilder {
         const rad = 35 + (i % 45)
 
         const landG = dCtx.createRadialGradient(cx, cy, 4, cx, cy, rad)
-        landG.addColorStop(0, '#eef6ff')     // 极高反照率雪峰
-        landG.addColorStop(0.55, '#a8c7e6')  // 冰川蓝冻土
-        landG.addColorStop(0.9, '#4c6d8c')   // 海岸冰架
+        landG.addColorStop(0, '#eef6ff')
+        landG.addColorStop(0.55, '#a8c7e6')
+        landG.addColorStop(0.9, '#4c6d8c')
         landG.addColorStop(1, 'rgba(23, 63, 115, 0)')
         dCtx.fillStyle = landG
         dCtx.beginPath()
         dCtx.arc(cx, cy, rad, 0, Math.PI * 2)
         dCtx.fill()
 
-        // 凹凸山脊高程图
         bCtx.fillStyle = 'rgba(235, 235, 235, 0.35)'
         bCtx.beginPath()
         bCtx.arc(cx * 0.5, cy * 0.5, rad * 0.4, 0, Math.PI * 2)
         bCtx.fill()
       }
 
-      // 夜半球金色地下城灯网与工业动脉连线
       nCtx.strokeStyle = 'rgba(255, 175, 65, 0.28)'
       nCtx.lineWidth = 1.2
       const hubs: [number, number][] = []
@@ -227,98 +399,15 @@ export class MegaStructuresBuilder {
     return new THREE.CanvasTexture(c)
   }
 
-  private createBrutalistArmorTextures() {
-    const c = document.createElement('canvas')
-    c.width = 512
-    c.height = 512
-    const ctx = c.getContext('2d')!
-    ctx.fillStyle = '#384354'
-    ctx.fillRect(0, 0, 512, 512)
-
-    ctx.strokeStyle = '#181e29'
-    ctx.lineWidth = 2.5
-    for (let y = 0; y < 512; y += 48) {
-      for (let x = 0; x < 512; x += 64) {
-        const shift = ((y / 48) % 2) * 32
-        ctx.fillStyle = (x + y) % 96 === 0 ? '#445166' : '#2f3947'
-        ctx.fillRect(x + shift + 2, y + 2, 60, 44)
-        ctx.strokeRect(x + shift, y, 64, 48)
-      }
-    }
-    const tex = new THREE.CanvasTexture(c)
-    tex.wrapS = THREE.RepeatWrapping
-    tex.wrapT = THREE.RepeatWrapping
-    tex.repeat.set(4, 4)
-    return { albedo: tex, bump: tex }
-  }
-
-  private createWarmWalkwayWindowsTexture(): THREE.CanvasTexture {
-    const c = document.createElement('canvas')
-    c.width = 512
-    c.height = 128
-    const ctx = c.getContext('2d')!
-    ctx.fillStyle = '#0c111a'
-    ctx.fillRect(0, 0, 512, 128)
-    for (let row = 14; row < 114; row += 18) {
-      for (let col = 6; col < 504; col += 10) {
-        if (Math.random() > 0.18) {
-          ctx.fillStyle = Math.random() > 0.15 ? '#ffaa33' : '#ffe6b3'
-          ctx.fillRect(col, row, 6, 5)
-        }
-      }
-    }
-    const tex = new THREE.CanvasTexture(c)
-    tex.wrapS = THREE.RepeatWrapping
-    tex.wrapT = THREE.RepeatWrapping
-    tex.repeat.set(8, 1)
-    return tex
-  }
-
-  private createSapphireSolarCellTexture(): THREE.CanvasTexture {
-    const c = document.createElement('canvas')
-    c.width = 512
-    c.height = 512
-    const ctx = c.getContext('2d')!
-    ctx.fillStyle = '#0f2d5e'
-    ctx.fillRect(0, 0, 512, 512)
-
-    // 蓝硅晶格 + 亮铜色汇流母线 (Copper Busbars)
-    ctx.strokeStyle = '#255799'
-    ctx.lineWidth = 2
-    for (let i = 0; i <= 512; i += 32) {
-      ctx.beginPath()
-      ctx.moveTo(i, 0)
-      ctx.lineTo(i, 512)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(0, i)
-      ctx.lineTo(512, i)
-      ctx.stroke()
-    }
-    ctx.strokeStyle = '#d97706'
-    ctx.lineWidth = 4
-    for (let i = 64; i < 512; i += 128) {
-      ctx.beginPath()
-      ctx.moveTo(i, 0)
-      ctx.lineTo(i, 512)
-      ctx.stroke()
-    }
-    const tex = new THREE.CanvasTexture(c)
-    tex.wrapS = THREE.RepeatWrapping
-    tex.wrapT = THREE.RepeatWrapping
-    tex.repeat.set(2, 1)
-    return tex
-  }
-
   private createSharpLunarCraterTexture(): THREE.CanvasTexture {
     const c = document.createElement('canvas')
     c.width = 1024
     c.height = 512
     const ctx = c.getContext('2d')!
-    ctx.fillStyle = '#b8bcc2'
+    // 调暗月球玄武岩与月壤基底颜色，杜绝高光白曝！
+    ctx.fillStyle = '#7a8088'
     ctx.fillRect(0, 0, 1024, 512)
 
-    // 静海与风暴洋暗色玄武岩盆地
     const mares = [
       { x: 340, y: 200, r: 120 },
       { x: 490, y: 235, r: 105 },
@@ -327,34 +416,34 @@ export class MegaStructuresBuilder {
     ]
     mares.forEach((m) => {
       const g = ctx.createRadialGradient(m.x, m.y, 12, m.x, m.y, m.r)
-      g.addColorStop(0, '#5a6069')
-      g.addColorStop(0.7, '#79808a')
-      g.addColorStop(1, 'rgba(184, 188, 194, 0)')
+      g.addColorStop(0, '#383d44')
+      g.addColorStop(0.7, '#4e545c')
+      g.addColorStop(1, 'rgba(122, 128, 136, 0)')
       ctx.fillStyle = g
       ctx.beginPath()
       ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2)
       ctx.fill()
     })
 
-    for (let i = 0; i < 1200; i++) {
+    for (let i = 0; i < 1400; i++) {
       const x = Math.random() * 1024
       const y = Math.random() * 512
-      const r = 1.5 + Math.pow(Math.random(), 3) * 32
-      ctx.strokeStyle = 'rgba(245, 248, 252, 0.55)'
-      ctx.lineWidth = 1.4
+      const r = 1.5 + Math.pow(Math.random(), 3) * 30
+      ctx.strokeStyle = 'rgba(180, 185, 192, 0.45)'
+      ctx.lineWidth = 1.3
       ctx.beginPath()
       ctx.arc(x, y, r, 0, Math.PI * 2)
       ctx.stroke()
-      ctx.fillStyle = 'rgba(55, 60, 68, 0.48)'
+      ctx.fillStyle = 'rgba(35, 38, 44, 0.52)'
       ctx.beginPath()
-      ctx.arc(x + 0.8, y + 0.8, r * 0.84, 0, Math.PI * 2)
+      ctx.arc(x + 0.8, y + 0.8, r * 0.82, 0, Math.PI * 2)
       ctx.fill()
     }
     return new THREE.CanvasTexture(c)
   }
 
   // ============================================================================
-  // 2. 高准直 7 束独立激光等离子柱着色器 (严控透明度与超载白金/暖橙渐变，绝不糊屏！)
+  // 2. 4-LAYER FLUID-DYNAMICS PLASMA PLUME SHADER (7 CORES + MACH SHOCK DIAMONDS)
   // ============================================================================
   public createCollimatedCoreRayShader(ignitionThreshold = 0.0): THREE.ShaderMaterial {
     return new THREE.ShaderMaterial({
@@ -392,21 +481,25 @@ export class MegaStructuresBuilder {
           if (ig <= 0.01 || uThrust <= 0.01) discard;
 
           float cosView = abs(dot(normalize(vNormal), normalize(vViewDir)));
-          float corePin = pow(cosView, 2.2);
+          float corePin = pow(cosView, 2.5);
 
-          // 纵向高频等离子纤维丝与喷口马赫震波环
-          float filaments = 0.82 + 0.18 * sin(vUv.x * 38.0 + sin(vUv.y * 20.0 - uTime * 16.0));
-          float machRings = exp(-vUv.y * 5.5) * smoothstep(0.25, 1.0, sin(vUv.y * 65.0 - uTime * 24.0)) * 0.45;
-          float heightFade = pow(max(0.0, 1.0 - vUv.y), 1.45) * smoothstep(0.0, 0.02, vUv.y);
+          // 核心点 1：下部 30% 脉动马赫震波环 (Mach Shock-Diamond Oscillations in lower 30%)
+          float machWave = sin(vUv.y * 65.0 - uTime * 18.0);
+          float shockDiamond = smoothstep(0.4, 0.95, machWave) * smoothstep(0.35, 0.0, vUv.y) * 0.55;
+
+          // 纵向羽流高速纤维流动
+          float filaments = 0.88 + 0.12 * sin(vUv.x * 42.0 + sin(vUv.y * 24.0 - uTime * 16.0));
+          // 顶部羽化消散 (NEVER a flat cut top!)
+          float featherTop = smoothstep(1.0, 0.65, vUv.y) * smoothstep(0.0, 0.02, vUv.y);
           float growMask = smoothstep(vUv.y, vUv.y - 0.12, ig);
 
-          // 常规态：高锐度冰晶蓝 (#00d8ff) -> 纯白光芯 (#e6faff)
-          vec3 nominalCol = mix(vec3(0.0, 0.85, 1.0), vec3(1.15, 1.35, 1.5), corePin);
-          // 120% 超载态：优雅切换为高温白金核心 (#fff2cc) 与暖橙边沿 (#ff8800)，绝不糊成白紫色块！
-          vec3 overclockCol = mix(vec3(1.0, 0.53, 0.0), vec3(1.35, 1.25, 0.95), corePin);
+          // 纯白高光白芯 (#ffffff) -> 蔚蓝等离子电离边缘 (#00f0ff)
+          vec3 nominalCol = mix(vec3(0.0, 0.94, 1.0), vec3(1.3, 1.45, 1.6), corePin + shockDiamond * 0.4);
+          // 超载模式：优雅切换为白金白炽核心 (#fff2cc) 与暖橙护套 (#ff8800)
+          vec3 overclockCol = mix(vec3(1.0, 0.53, 0.0), vec3(1.4, 1.3, 0.95), corePin + shockDiamond * 0.4);
           vec3 finalCol = mix(nominalCol, overclockCol, uOverclock) * filaments;
 
-          float alpha = clamp((corePin * 0.62 + machRings) * heightFade * growMask * clamp(uThrust, 0.2, 1.15), 0.0, 0.68);
+          float alpha = clamp((corePin * 0.65 + shockDiamond) * featherTop * growMask * clamp(uThrust, 0.2, 1.15), 0.0, 0.72);
           gl_FragColor = vec4(finalCol, alpha);
         }
       `,
@@ -448,19 +541,41 @@ export class MegaStructuresBuilder {
         varying vec3 vNormal;
         varying vec3 vViewDir;
 
+        float hash2(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+        float noise2(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(
+            mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x),
+            mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x),
+            f.y
+          );
+        }
+
         void main() {
           float ig = clamp((uIgnitionProgress - uIgnitionThreshold) * 4.5, 0.0, 1.0);
           if (ig <= 0.01 || uThrust <= 0.01) discard;
 
-          float softRim = pow(abs(dot(normalize(vNormal), normalize(vViewDir))), 2.6);
-          float vFade = pow(max(0.0, 1.0 - vUv.y), 1.9) * smoothstep(0.0, 0.04, vUv.y);
-          float wave = 0.8 + 0.2 * sin(vUv.y * 18.0 - uTime * 9.0);
+          // 核心点 2：径向高斯柔化衰减 exp(-pow(r * 3.2, 2.0))
+          float cosAngle = abs(dot(normalize(vNormal), normalize(vViewDir)));
+          float r = 1.0 - cosAngle;
+          float gaussianRadial = exp(-pow(r * 3.2, 2.0));
 
-          vec3 colBlue = vec3(0.08, 0.58, 1.0);
-          vec3 colGold = vec3(1.0, 0.53, 0.05);
+          // 顶部羽化消散 smoothstep(1.0, 0.65, vUv.y)
+          float featherTop = smoothstep(1.0, 0.65, vUv.y) * smoothstep(0.0, 0.04, vUv.y);
+
+          // 向上滚动的湍流等离子纤维 (vUv.y - uTime * 5.0)
+          vec2 uvFlow = vec2(vUv.x * 8.0, vUv.y * 12.0 - uTime * 5.0);
+          float n = noise2(uvFlow) * 0.7 + noise2(uvFlow * 2.3 + 1.7) * 0.3;
+
+          vec3 colBlue = vec3(0.05, 0.62, 1.0);
+          vec3 colGold = vec3(1.0, 0.52, 0.06);
           vec3 col = mix(colBlue, colGold, uOverclock);
 
-          float alpha = clamp(softRim * vFade * wave * ig * 0.26, 0.0, 0.28);
+          float alpha = clamp(gaussianRadial * featherTop * (0.65 + n * 0.35) * ig * 0.32, 0.0, 0.35);
           gl_FragColor = vec4(col, alpha);
         }
       `,
@@ -472,166 +587,227 @@ export class MegaStructuresBuilder {
   }
 
   // ============================================================================
-  // 3A. 重工业野兽派 11km 行星发动机 (24根垂直肋片 + 6层暖黄走廊 + 6条液压巨腿 + 7联装高准直激光束)
+  // 3A. NODE 2: 11KM HEAVY-FUSION PLANETARY ENGINE (80+ CAD SUB-MESHES)
   // ============================================================================
   public buildBrutalistPlanetaryEngine(
     scale = 1.0,
-    plumeHeight = 14.0,
+    plumeHeight = 14.5,
     ignitionThreshold = 0.0
   ): BrutalistEngineRig {
     const group = new THREE.Group()
     const strobes: THREE.Mesh[] = []
 
-    const armorMat = new THREE.MeshStandardMaterial({
-      color: 0x475569,
-      map: this.armorAlbedo,
-      bumpMap: this.armorBump,
-      bumpScale: 0.025,
-      metalness: 0.82,
-      roughness: 0.32,
+    const darkArmoredSteel = new THREE.MeshStandardMaterial({
+      color: 0x1a1e26,
+      map: this.pbrMaps.map,
+      bumpMap: this.pbrMaps.bumpMap,
+      bumpScale: 0.02,
+      roughnessMap: this.pbrMaps.roughnessMap,
+      emissiveMap: this.pbrMaps.emissiveMap,
+      emissive: new THREE.Color(0xffffff),
+      emissiveIntensity: 0.85,
+      metalness: 0.85,
+      roughness: 0.35,
       envMapIntensity: 1.8
     })
-    const darkSteelMat = new THREE.MeshStandardMaterial({
-      color: 0x263040,
-      metalness: 0.86,
-      roughness: 0.28,
+
+    const gunmetal = new THREE.MeshStandardMaterial({
+      color: 0x2d3748,
+      metalness: 0.88,
+      roughness: 0.26,
       envMapIntensity: 1.8
     })
-    const chromePistonMat = new THREE.MeshStandardMaterial({
+
+    const chromePiston = new THREE.MeshStandardMaterial({
       color: 0xe2e8f0,
-      metalness: 0.94,
-      roughness: 0.14,
-      envMapIntensity: 2.0
+      metalness: 0.95,
+      roughness: 0.12,
+      envMapIntensity: 2.2
     })
-    const walkwayMat = new THREE.MeshBasicMaterial({
-      map: this.walkwayLightsTex,
-      color: 0xffaa33
-    })
-    const cyanCoilMat = new THREE.MeshBasicMaterial({ color: 0x00d8ff })
-    const redStrobeMat = new THREE.MeshBasicMaterial({ color: 0xff2a4d })
 
-    // 1. 底层重装岩床基座与 6 层暖黄照明检修走廊 (`#ffaa33` micro-window strips)
-    const foundation = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.78, 0.14, 24), darkSteelMat)
-    foundation.position.y = 0.07
-    group.add(foundation)
+    const cyanCoil = new THREE.MeshBasicMaterial({ color: 0x00f0ff })
+    const redStrobe = new THREE.MeshBasicMaterial({ color: 0xff2a4d })
 
-    const towerBody = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.36, 0.58, 0.54, 24, 1, true),
-      armorMat
-    )
-    towerBody.position.y = 0.34
-    group.add(towerBody)
+    // -------------------------------------------------------------------------
+    // 1. Subterranean Blast Crater & Octagonal Armored Foundation Ring
+    // -------------------------------------------------------------------------
+    const baseOctagon = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.88, 0.16, 8), darkArmoredSteel)
+    baseOctagon.position.y = 0.08
+    group.add(baseOctagon)
 
-    for (let tier = 0; tier < 6; tier++) {
-      const r = 0.56 - tier * 0.036
-      const y = 0.14 + tier * 0.078
-      // 暖黄灯光走廊环
-      const lightGallery = new THREE.Mesh(new THREE.CylinderGeometry(r, r + 0.01, 0.022, 24, 1, true), walkwayMat)
-      lightGallery.position.y = y
-      group.add(lightGallery)
+    // 八面环形泄爆排气壕沟与防护外护堤 (Blast Deflector Trenches)
+    const blastDike = new THREE.Mesh(new THREE.TorusGeometry(0.96, 0.06, 8, 8), gunmetal)
+    blastDike.rotation.x = Math.PI * 0.5
+    blastDike.position.y = 0.06
+    group.add(blastDike)
 
-      // 水平加固环形钢梁
-      const girder = new THREE.Mesh(new THREE.TorusGeometry(r + 0.018, 0.01, 6, 24), darkSteelMat)
-      girder.rotation.x = Math.PI * 0.5
-      girder.position.y = y + 0.014
-      group.add(girder)
+    // 8 组外展重型液压 A-frame 斜撑桁架大腿 (8 Massive Splayed Hydraulic A-Frame Thrust Legs)
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2
+      const legG = new THREE.Group()
+      legG.rotation.y = ang
+
+      // A-frame 双主斜梁
+      for (const side of [-0.06, 0.06]) {
+        const strut = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.72, 0.09), darkArmoredSteel)
+        strut.position.set(side, 0.32, 0.72)
+        strut.rotation.x = -0.76
+        legG.add(strut)
+      }
+
+      // 中央高压液压推力活塞
+      const hydPiston = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.62, 8), chromePiston)
+      hydPiston.position.set(0, 0.28, 0.76)
+      hydPiston.rotation.x = -0.76
+      legG.add(hydPiston)
+
+      // 山体锚固履带装甲靴与防撞红闪灯
+      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, 0.28), gunmetal)
+      boot.position.set(0, 0.04, 1.02)
+      legG.add(boot)
+
+      const st = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 8), redStrobe)
+      st.position.set(0, 0.12, 1.1)
+      legG.add(st)
+      strobes.push(st)
+
+      // 周边防爆泛光照明塔 (Perimeter Floodlight Towers)
+      const towerPost = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.42, 6), darkArmoredSteel)
+      towerPost.position.set(0.14, 0.21, 0.98)
+      legG.add(towerPost)
+
+      group.add(legG)
     }
 
-    // 2. 24 根重型垂直冷却塔式结构扶壁肋片 (24 Heavy Vertical Structural Buttress Fins)
-    for (let i = 0; i < 24; i++) {
-      const ang = (i / 24) * Math.PI * 2
-      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.56, 0.14), armorMat)
-      fin.position.set(Math.cos(ang) * 0.48, 0.33, Math.sin(ang) * 0.48)
-      fin.rotation.y = -ang
-      fin.rotation.x = -0.35
+    // -------------------------------------------------------------------------
+    // 2. Hyperbolic Cooling Shroud & 32 Brutalist Vertical Buttress Fins
+    // -------------------------------------------------------------------------
+    const coolingTower = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.42, 0.68, 0.62, 32, 1, true),
+      darkArmoredSteel
+    )
+    coolingTower.position.y = 0.39
+    group.add(coolingTower)
+
+    // 32 根锐利外挑式垂直结构散热肋片 (32 Sharp Vertical Structural Cooling Fins)
+    for (let f = 0; f < 32; f++) {
+      const fAng = (f / 32) * Math.PI * 2
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.64, 0.14), darkArmoredSteel)
+      fin.position.set(Math.cos(fAng) * 0.54, 0.39, Math.sin(fAng) * 0.54)
+      fin.rotation.y = -fAng
+      fin.rotation.x = -0.36
       group.add(fin)
     }
 
-    // 3. 6 条巨型液压减震斜撑三脚架支腿 + 航空红闪信标 (6 Colossal Angled Hydraulic Struts)
-    for (let i = 0; i < 6; i++) {
-      const ang = (i / 6) * Math.PI * 2
-      const legGroup = new THREE.Group()
-      legGroup.rotation.y = ang
+    // 6 层水平加固外悬环形检修栈桥 (6 Horizontal Reinforcement Ring Gantries)
+    for (let t = 0; t < 6; t++) {
+      const ringR = 0.64 - t * 0.038
+      const ringY = 0.16 + t * 0.085
+      const gantry = new THREE.Mesh(new THREE.TorusGeometry(ringR, 0.012, 6, 32), gunmetal)
+      gantry.rotation.x = Math.PI * 0.5
+      gantry.position.y = ringY
+      group.add(gantry)
+    }
 
-      const upperStrut = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.68, 0.12), darkSteelMat)
-      upperStrut.position.set(0, 0.28, 0.62)
-      upperStrut.rotation.x = -0.78
-      legGroup.add(upperStrut)
+    // 4 根贯穿塔身全高的外挂工字钢升降电梯井 (Vertical Elevator Shafts)
+    for (let e = 0; e < 4; e++) {
+      const eAng = (e / 4) * Math.PI * 2 + Math.PI / 4
+      const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.66, 0.055), gunmetal)
+      shaft.position.set(Math.cos(eAng) * 0.56, 0.39, Math.sin(eAng) * 0.56)
+      group.add(shaft)
+    }
 
-      // 镀铬双液压活塞杆
-      for (const side of [-0.055, 0.055]) {
-        const piston = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.52, 8), chromePistonMat)
-        piston.position.set(side, 0.24, 0.68)
-        piston.rotation.x = -0.78
-        legGroup.add(piston)
-      }
+    // -------------------------------------------------------------------------
+    // 3. 4km-Wide Upper Crater & 7-Nozzle Magnetic Accelerator Core
+    // -------------------------------------------------------------------------
+    const rimArmor = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.038, 10, 32), darkArmoredSteel)
+    rimArmor.rotation.x = Math.PI * 0.5
+    rimArmor.position.y = 0.7
+    group.add(rimArmor)
 
-      // 锚定山体的巨型脚垫与红色防撞频闪灯
-      const footpad = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.08, 0.26), armorMat)
-      footpad.position.set(0, 0.04, 0.88)
-      legGroup.add(footpad)
-
-      const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 8), redStrobeMat)
-      strobe.position.set(0, 0.11, 0.96)
-      legGroup.add(strobe)
+    // 喷口上边缘 8 盏防撞航标灯
+    for (let s = 0; s < 8; s++) {
+      const sAng = (s / 8) * Math.PI * 2
+      const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), redStrobe)
+      strobe.position.set(Math.cos(sAng) * 0.44, 0.73, Math.sin(sAng) * 0.44)
+      group.add(strobe)
       strobes.push(strobe)
-
-      group.add(legGroup)
     }
 
-    // 4. 喷口火山口内腔：7 联装独立等离子加速喷嘴 + 青色磁约束线圈环 (Inner 7-Nozzle Fusion Injector Core)
-    const craterRim = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.032, 10, 32), darkSteelMat)
-    craterRim.rotation.x = Math.PI * 0.5
-    craterRim.position.y = 0.61
-    group.add(craterRim)
+    // 凹陷聚变点火室基底与磁约束环
+    const throatPlate = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.08, 24), gunmetal)
+    throatPlate.position.y = 0.66
+    group.add(throatPlate)
 
-    const magCoil = new THREE.Mesh(new THREE.TorusGeometry(0.31, 0.012, 8, 32), cyanCoilMat)
-    magCoil.rotation.x = Math.PI * 0.5
-    magCoil.position.y = 0.58
-    group.add(magCoil)
+    const magCoilRing = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.015, 8, 32), cyanCoil)
+    magCoilRing.rotation.x = Math.PI * 0.5
+    magCoilRing.position.y = 0.69
+    group.add(magCoilRing)
 
-    const nozzleOffsets: [number, number][] = [[0, 0]]
-    for (let k = 0; k < 6; k++) {
-      const a = (k / 6) * Math.PI * 2
-      nozzleOffsets.push([Math.cos(a) * 0.165, Math.sin(a) * 0.165])
+    // 7 联装独立环形聚变加速喷嘴座标 (Center + Hexagon)
+    const nozzleCenters: [number, number][] = [[0, 0]]
+    for (let n = 0; n < 6; n++) {
+      const a = (n / 6) * Math.PI * 2
+      nozzleCenters.push([Math.cos(a) * 0.18, Math.sin(a) * 0.18])
     }
 
-    // 5. 7 束独立高准直激光等离子柱 + 1 层柔和外电离气鞘 (Collimated Multi-Ray Plasma Pillar)
+    // -------------------------------------------------------------------------
+    // 4. 4-Layer Plasma Plume Rig (Flare + 7 Mach Diamond Cores + Turbulent Sheath)
+    // -------------------------------------------------------------------------
     const plumeAssembly = new THREE.Group()
-    plumeAssembly.position.y = 0.56
+    plumeAssembly.position.y = 0.68
+
     const coreRayMat = this.createCollimatedCoreRayShader(ignitionThreshold)
     const sheathMat = this.createOuterIonSheathShader(ignitionThreshold)
 
-    const singleRayGeo = new THREE.CylinderGeometry(0.042, 0.055, plumeHeight, 12, 24, true)
-    singleRayGeo.translate(0, plumeHeight * 0.5, 0)
+    const singleCoreGeo = new THREE.CylinderGeometry(0.038, 0.048, plumeHeight, 10, 32, true)
+    singleCoreGeo.translate(0, plumeHeight * 0.5, 0)
 
-    nozzleOffsets.forEach(([nx, nz]) => {
-      // 喷口金属加速环
-      const injectorBell = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.062, 0.048, 0.09, 12, 1, true),
-        chromePistonMat
-      )
-      injectorBell.position.set(nx, 0.54, nz)
-      group.add(injectorBell)
+    nozzleCenters.forEach(([nx, nz]) => {
+      // 喷嘴金属托架
+      const nozzleBell = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.052, 0.09, 12, 1, true), chromePiston)
+      nozzleBell.position.set(nx, 0.67, nz)
+      group.add(nozzleBell)
 
-      const coreDisk = new THREE.Mesh(
-        new THREE.CircleGeometry(0.052, 16),
-        new THREE.MeshBasicMaterial({ color: 0xd8f8ff })
-      )
-      coreDisk.rotation.x = -Math.PI * 0.5
-      coreDisk.position.set(nx, 0.56, nz)
-      group.add(coreDisk)
-
-      // 准直垂直等离子光芯柱
-      const rayMesh = new THREE.Mesh(singleRayGeo, coreRayMat)
+      // 准直白金光芯
+      const rayMesh = new THREE.Mesh(singleCoreGeo, coreRayMat)
       rayMesh.position.set(nx, 0, nz)
       plumeAssembly.add(rayMesh)
     })
 
-    // 外围半透明电离空气护套
-    const sheathGeo = new THREE.CylinderGeometry(0.42, 0.29, plumeHeight * 0.95, 24, 16, true)
-    sheathGeo.translate(0, plumeHeight * 0.475, 0)
+    // 外围高斯衰减等离子护鞘
+    const sheathGeo = new THREE.CylinderGeometry(0.44, 0.28, plumeHeight * 0.96, 24, 24, true)
+    sheathGeo.translate(0, plumeHeight * 0.48, 0)
     plumeAssembly.add(new THREE.Mesh(sheathGeo, sheathMat))
+
+    // 喷口光学星芒耀斑盘 (Nozzle Crown Flare)
+    const flareGeo = new THREE.PlaneGeometry(2.2, 2.2)
+    const flareMat = new THREE.MeshBasicMaterial({
+      map: this.softGlowSprite,
+      transparent: true,
+      opacity: 0.65,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    })
+    const crownFlareMesh = new THREE.Mesh(flareGeo, flareMat)
+    crownFlareMesh.rotation.x = -Math.PI * 0.5
+    crownFlareMesh.position.y = 0.05
+    plumeAssembly.add(crownFlareMesh)
+
+    // 大气穿透激波环 (Atmospheric Shock Wave Ring where beam punches clouds)
+    const shockRingGeo = new THREE.RingGeometry(0.25, 1.85, 32)
+    const shockRingMat = new THREE.MeshBasicMaterial({
+      color: 0x60d5ff,
+      transparent: true,
+      opacity: 0.35,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    })
+    const shockRingMesh = new THREE.Mesh(shockRingGeo, shockRingMat)
+    shockRingMesh.rotation.x = -Math.PI * 0.5
+    shockRingMesh.position.y = plumeHeight * 0.18
+    plumeAssembly.add(shockRingMesh)
 
     group.add(plumeAssembly)
     group.scale.setScalar(scale)
@@ -641,177 +817,215 @@ export class MegaStructuresBuilder {
       plumeAssembly,
       coreRayMat,
       sheathMat,
+      shockRingMesh,
+      crownFlareMesh,
       strobes
     }
   }
 
   // ============================================================================
-  // 3B. 赤道万向节转向发动机单元 (U型双耳轴万向支架 + 配重桁架 + 20° 倾角切向喷口)
+  // 3B. NODE 3: EQUATORIAL STEERING ARRAY (HEAVY DUAL-TRUNNION GIMBAL CRADLES)
   // ============================================================================
-  public buildGimbalSteeringEngineUnit(
-    scale = 1.0,
-    plumeLength = 16.0
-  ): BrutalistEngineRig {
+  public buildGimbalSteeringEngineUnit(scale = 1.0, plumeLength = 16.5): BrutalistEngineRig {
     const group = new THREE.Group()
 
-    const steelMat = new THREE.MeshStandardMaterial({
-      color: 0x3b4758,
-      map: this.armorAlbedo,
-      metalness: 0.85,
+    const darkSteel = new THREE.MeshStandardMaterial({
+      color: 0x1f2633,
+      map: this.pbrMaps.map,
+      bumpMap: this.pbrMaps.bumpMap,
+      bumpScale: 0.02,
+      metalness: 0.88,
       roughness: 0.3,
       envMapIntensity: 1.8
     })
+    const hydMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.92, roughness: 0.18 })
 
-    // U 型双耳轴万向节底座支架 (U-Shaped Dual-Trunnion Gimbal Cradle)
-    const cradleBase = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.14, 1.1), steelMat)
-    cradleBase.position.y = 0.07
-    group.add(cradleBase)
+    // 1. 赤道装甲峡谷壕沟基座 (Armored Trench Foundation)
+    const trenchBase = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.22, 1.35), darkSteel)
+    trenchBase.position.y = 0.11
+    group.add(trenchBase)
 
-    for (const xSide of [-0.55, 0.55]) {
-      const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.75, 0.42), steelMat)
-      pylon.position.set(xSide, 0.42, 0)
-      group.add(pylon)
+    // 2. U 型双耳轴万向节主支架 (U-Shaped Dual-Trunnion Gimbal Support Yoke)
+    for (const s of [-0.68, 0.68]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.82, 0.48), darkSteel)
+      arm.position.set(s, 0.48, 0)
+      group.add(arm)
+
+      const pivotBearing = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.28, 16), hydMat)
+      pivotBearing.rotation.z = Math.PI * 0.5
+      pivotBearing.position.set(s > 0 ? s - 0.08 : s + 0.08, 0.72, 0)
+      group.add(pivotBearing)
     }
 
-    // 内部挂载的 20° 切向倾角发动机本体 (70° from vertical = 20° above horizontal)
-    const innerRig = this.buildBrutalistPlanetaryEngine(0.85, plumeLength, 0.0)
-    innerRig.group.position.set(0, 0.38, 0)
-    innerRig.group.rotation.x = Math.PI * 0.5 - 0.35 // 20° above horizontal equatorial tangent
-    group.add(innerRig.group)
+    // 双向巨型液压俯仰致动器 (Massive Hydraulic Pitch Actuators)
+    const actuatorL = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.65, 8), hydMat)
+    actuatorL.position.set(-0.52, 0.38, 0.32)
+    actuatorL.rotation.x = -0.45
+    const actuatorR = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.65, 8), hydMat)
+    actuatorR.position.set(0.52, 0.38, 0.32)
+    actuatorR.rotation.x = -0.45
+    group.add(actuatorL, actuatorR)
+
+    // 尾部方形平衡配重块 (Rear Counterweight Block)
+    const counterweight = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.45, 0.42), darkSteel)
+    counterweight.position.set(0, 0.35, -0.48)
+    group.add(counterweight)
+
+    // 内部安装的 22° 切向仰角喷口本体 (22° Tangential Tilt along the Equator)
+    const engineRig = this.buildBrutalistPlanetaryEngine(0.88, plumeLength, 0.0)
+    engineRig.group.position.set(0, 0.46, 0)
+    // 22° above horizontal tangent: 90° - 22° = 68° = ~1.186 rad from vertical
+    engineRig.group.rotation.x = Math.PI * 0.5 - 0.384
+    group.add(engineRig.group)
 
     group.scale.setScalar(scale)
     return {
       group,
-      plumeAssembly: innerRig.plumeAssembly,
-      coreRayMat: innerRig.coreRayMat,
-      sheathMat: innerRig.sheathMat,
-      strobes: innerRig.strobes
+      plumeAssembly: engineRig.plumeAssembly,
+      coreRayMat: engineRig.coreRayMat,
+      sheathMat: engineRig.sheathMat,
+      shockRingMesh: engineRig.shockRingMesh,
+      crownFlareMesh: engineRig.crownFlareMesh,
+      strobes: engineRig.strobes
     }
   }
 
   // ============================================================================
-  // 3C. 赤道太空电梯锚点要塞 (冰封洋面八角平台 + 8座桁架发射脐带塔 + 3艘攀爬轿厢)
+  // 3C. NODE 4: EQUATORIAL ANCHOR & AEROSPACE CLIMBER TRAINS (NO OVEREXPOSURE)
   // ============================================================================
   public buildEquatorialAnchorComplex(tetherLength = 42.0): {
     group: THREE.Group
-    climberPods: THREE.Group[]
+    climberTrains: THREE.Group[]
   } {
     const group = new THREE.Group()
-    const climberPods: THREE.Group[] = []
+    const climberTrains: THREE.Group[] = []
 
-    const titaniumMat = new THREE.MeshStandardMaterial({
-      color: 0x475569,
-      map: this.armorAlbedo,
-      bumpMap: this.armorBump,
-      bumpScale: 0.02,
+    const fortressArmor = new THREE.MeshStandardMaterial({
+      color: 0x334155,
+      map: this.pbrMaps.map,
+      bumpMap: this.pbrMaps.bumpMap,
+      bumpScale: 0.022,
+      roughnessMap: this.pbrMaps.roughnessMap,
+      emissiveMap: this.pbrMaps.emissiveMap,
+      // 严格钳制基座自发光强度 <= 0.7，彻底解决过曝大白球！
+      emissive: new THREE.Color(0xffffff),
+      emissiveIntensity: 0.55,
       metalness: 0.84,
-      roughness: 0.28,
+      roughness: 0.32,
       envMapIntensity: 1.8
     })
-    const trussMat = new THREE.MeshStandardMaterial({
-      color: 0x94a3b8,
+
+    const latticeSteel = new THREE.MeshStandardMaterial({
+      color: 0x64748b,
       metalness: 0.88,
-      roughness: 0.24,
+      roughness: 0.25,
       envMapIntensity: 1.8
     })
-    const railGlowMat = new THREE.MeshBasicMaterial({ color: 0x00d8ff })
-    const warmWindowMat = new THREE.MeshBasicMaterial({ map: this.walkwayLightsTex, color: 0xffaa33 })
 
-    // 1. 底部冰架海面与多级八角重装平台 (Tiered Octagonal Industrial Mega-Platform)
-    const iceShelf = new THREE.Mesh(
-      new THREE.CylinderGeometry(9.5, 10.0, 0.18, 32),
-      new THREE.MeshStandardMaterial({ color: 0x9bb8d9, roughness: 0.45, metalness: 0.2 })
-    )
-    iceShelf.position.y = -0.05
-    group.add(iceShelf)
+    const trainHullMat = new THREE.MeshStandardMaterial({
+      color: 0xe2e8f0,
+      metalness: 0.92,
+      roughness: 0.18,
+      envMapIntensity: 2.0
+    })
 
-    const tier1 = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.8, 0.45, 8), titaniumMat)
-    tier1.position.y = 0.22
-    const tier2 = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.7, 0.55, 8), titaniumMat)
-    tier2.position.y = 0.68
-    const walkRing = new THREE.Mesh(new THREE.CylinderGeometry(2.75, 2.75, 0.14, 16, 1, true), warmWindowMat)
-    walkRing.position.y = 0.48
-    group.add(tier1, tier2, walkRing)
+    const cyanTrackMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff })
+    const warningAmber = new THREE.MeshBasicMaterial({ color: 0xffaa44 })
 
-    // 2. 8 座高耸交叉金属桁架发射脐带塔 (8 Towering Vertical Lattice Launch Umbilical Towers)
-    for (let i = 0; i < 8; i++) {
-      const ang = (i / 8) * Math.PI * 2
+    // 1. 冰架海面上的多级八角要塞基座 (Tiered Octagonal Sea-Base Fortress)
+    const baseOct = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 4.2, 0.5, 8), fortressArmor)
+    baseOct.position.y = 0.25
+    const topOct = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.9, 0.6, 8), fortressArmor)
+    topOct.position.y = 0.8
+    group.add(baseOct, topOct)
+
+    // 2. 6 座高耸交叉桁架垂直发射脐带塔 (6 Tall Lattice Launch Umbilical Towers)
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2
       const tower = new THREE.Group()
       tower.rotation.y = ang
 
-      // 主立柱与交叉斜撑桁架
-      const mainMast = new THREE.Mesh(new THREE.BoxGeometry(0.28, 5.8, 0.36), titaniumMat)
-      mainMast.position.set(0, 2.9, 1.85)
-      mainMast.rotation.x = -0.08
-      tower.add(mainMast)
+      const mast = new THREE.Mesh(new THREE.BoxGeometry(0.3, 6.2, 0.38), fortressArmor)
+      mast.position.set(0, 3.1, 2.1)
+      mast.rotation.x = -0.07
+      tower.add(mast)
 
-      for (let h = 0; h < 8; h++) {
-        const cross = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.06, 0.65), trussMat)
-        cross.position.set(0, 0.8 + h * 0.65, 1.65 - h * 0.04)
-        cross.rotation.x = h % 2 === 0 ? 0.45 : -0.45
-        tower.add(cross)
+      // 交叉斜撑与维修吊车横梁 (Crane Gantries)
+      for (let h = 0; h < 7; h++) {
+        const brace = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.08, 0.72), latticeSteel)
+        brace.position.set(0, 0.9 + h * 0.75, 1.88 - h * 0.05)
+        brace.rotation.x = h % 2 === 0 ? 0.38 : -0.38
+        tower.add(brace)
       }
 
-      // 发光线性电磁感应导轨 (Glowing Electromagnetic Linear-Induction Rails)
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 5.6, 0.06), railGlowMat)
-      rail.position.set(0, 2.9, 1.52)
-      rail.rotation.x = -0.08
-      tower.add(rail)
+      // 顶部悬挑起重机桁架臂 (Crane Boom)
+      const craneArm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 1.4), latticeSteel)
+      craneArm.position.set(0, 6.1, 1.4)
+      tower.add(craneArm)
+
+      // 垂直电磁发射感应轨 (Magnetic Induction Launch Rail)
+      const magRail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 5.8, 0.06), cyanTrackMat)
+      magRail.position.set(0, 3.1, 1.76)
+      magRail.rotation.x = -0.07
+      tower.add(magRail)
 
       group.add(tower)
     }
 
-    // 3. 3 根直达同步轨道天柱空间站的编织碳纳米管天梯缆索
-    const ribbonMat = new THREE.MeshStandardMaterial({
-      color: 0xdbeafe,
-      emissive: 0x0284c7,
-      emissiveIntensity: 0.45,
-      metalness: 0.9,
-      roughness: 0.15
+    // 3. 3 根细编织碳纳米管天梯缆索 (Braided Carbon-Nanotube Tethers)
+    const tetherMat = new THREE.MeshStandardMaterial({
+      color: 0xc8d8ea,
+      metalness: 0.92,
+      roughness: 0.15,
+      envMapIntensity: 2.0
     })
     for (let c = 0; c < 3; c++) {
       const cAng = (c / 3) * Math.PI * 2
-      const ribbonGeo = new THREE.CylinderGeometry(0.03, 0.03, tetherLength, 8)
-      ribbonGeo.translate(0, tetherLength * 0.5, 0)
-      const ribbon = new THREE.Mesh(ribbonGeo, ribbonMat)
-      ribbon.position.set(Math.cos(cAng) * 0.42, 0.5, Math.sin(cAng) * 0.42)
-      group.add(ribbon)
+      const cableGeo = new THREE.CylinderGeometry(0.035, 0.035, tetherLength, 8)
+      cableGeo.translate(0, tetherLength * 0.5, 0)
+      const cable = new THREE.Mesh(cableGeo, tetherMat)
+      cable.position.set(Math.cos(cAng) * 0.45, 0.6, Math.sin(cAng) * 0.45)
+      group.add(cable)
     }
 
-    // 4. 3 艘流线型金属太空电梯攀爬轿厢 (3 Sleek Space Elevator Climber Pods)
+    // 4. 高精气动造型太空电梯攀爬列车 (Detailed Aerospace Climber Trains)
     for (let p = 0; p < 3; p++) {
-      const pod = new THREE.Group()
-      pod.position.y = 1.8 + p * 2.2
+      const train = new THREE.Group()
+      train.position.y = 2.2 + p * 2.8
 
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.62, 0.95, 12), trussMat)
-      const cabinWin = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.28, 12, 1, true), warmWindowMat)
-      pod.add(body, cabinWin)
+      // 八角形细长货运机身 (Elongated Octagonal Cargo Module)
+      const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 1.15, 8), trainHullMat)
+      // 上下流线型锥形气动减阻鼻锥 (Tapered Aerodynamic Nosecones)
+      const noseTop = new THREE.Mesh(new THREE.ConeGeometry(0.52, 0.42, 8), trainHullMat)
+      noseTop.position.y = 0.78
+      const noseBot = new THREE.Mesh(new THREE.ConeGeometry(0.52, 0.35, 8), trainHullMat)
+      noseBot.position.y = -0.75
+      noseBot.rotation.x = Math.PI
+      train.add(fuselage, noseTop, noseBot)
 
-      for (let j = 0; j < 6; j++) {
-        const jAng = (j / 6) * Math.PI * 2
-        const thruster = new THREE.Mesh(
-          new THREE.ConeGeometry(0.08, 0.45, 10),
-          new THREE.MeshBasicMaterial({
-            color: 0x00d8ff,
-            transparent: true,
-            opacity: 0.7,
-            blending: THREE.AdditiveBlending
-          })
-        )
-        thruster.rotation.x = Math.PI
-        thruster.position.set(Math.cos(jAng) * 0.48, -0.68, Math.sin(jAng) * 0.48)
-        pod.add(thruster)
+      // 外附散热百叶板 (Thermal Radiator Fins)
+      for (let r = 0; r < 4; r++) {
+        const rAng = (r / 4) * Math.PI * 2
+        const radFin = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.92, 0.28), latticeSteel)
+        radFin.position.set(Math.cos(rAng) * 0.62, 0, Math.sin(rAng) * 0.62)
+        radFin.rotation.y = -rAng
+        train.add(radFin)
       }
 
-      group.add(pod)
-      climberPods.push(pod)
+      // 磁悬浮驱动夹钳与警示频闪光环 (Magnetic Drive Clamps & Strobe Ring)
+      const driveClamp = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.035, 6, 16), warningAmber)
+      driveClamp.rotation.x = Math.PI * 0.5
+      train.add(driveClamp)
+
+      group.add(train)
+      climberTrains.push(train)
     }
 
-    return { group, climberPods }
+    return { group, climberTrains }
   }
 
   // ============================================================================
-  // 3D. 天柱号同步轨道空间站 (100+ 部件：拉丝钛桁架 + 球形贮箱 + 金箔 Kapton + 16舱段双环 + 8幅蓝硅光翼)
+  // 3D. NODE 5: TIANZHU APEX STATION (GEO ARK: LATTICE TRUSS + GOLD KAPTON + ISS WINGS)
   // ============================================================================
   public buildTianzhuApexStation(): {
     group: THREE.Group
@@ -823,229 +1037,287 @@ export class MegaStructuresBuilder {
     const strobes: THREE.Mesh[] = []
 
     const brushedTitanium = new THREE.MeshStandardMaterial({
-      color: 0xc8d2dc,
-      map: this.armorAlbedo,
+      color: 0xc0c8d4,
+      map: this.pbrMaps.map,
+      bumpMap: this.pbrMaps.bumpMap,
+      bumpScale: 0.015,
       metalness: 0.85,
       roughness: 0.25,
-      envMapIntensity: 1.8
+      envMapIntensity: 2.0
     })
-    const darkTrussMat = new THREE.MeshStandardMaterial({
+
+    const openTrussMat = new THREE.MeshStandardMaterial({
       color: 0x3b4759,
-      metalness: 0.88,
+      metalness: 0.9,
       roughness: 0.28,
       envMapIntensity: 1.8
     })
-    const kaptonGoldMat = new THREE.MeshStandardMaterial({
+
+    // 真实褶皱质感金箔 Kapton 隔热膜 (Crinkled Gold Kapton Foil)
+    const kaptonGoldFoil = new THREE.MeshStandardMaterial({
       color: 0xd4af37,
-      metalness: 0.92,
-      roughness: 0.18,
-      envMapIntensity: 2.0
+      bumpMap: this.pbrMaps.bumpMap,
+      bumpScale: 0.06,
+      metalness: 0.9,
+      roughness: 0.25,
+      envMapIntensity: 2.4
     })
-    const solarWingMat = new THREE.MeshStandardMaterial({
-      map: this.solarArrayTex,
-      bumpMap: this.solarArrayTex,
-      bumpScale: 0.015,
-      color: 0x3b82f6,
-      emissive: 0x0b1e3b,
-      emissiveIntensity: 0.35,
-      metalness: 0.82,
-      roughness: 0.16,
-      envMapIntensity: 1.9,
+
+    const darkSiliconMat = new THREE.MeshStandardMaterial({
+      map: this.solarWingMaps.map,
+      bumpMap: this.solarWingMaps.bump,
+      bumpScale: 0.02,
+      color: 0x091526,
+      metalness: 0.92,
+      roughness: 0.12,
+      envMapIntensity: 2.0,
       side: THREE.DoubleSide
     })
-    const cabinWinMat = new THREE.MeshBasicMaterial({ map: this.walkwayLightsTex, color: 0xffe6b3 })
 
-    // 1. 八角形中央主桁架脊柱 + 球形推进剂贮箱 + 金箔隔热舱段
+    const windowStrips = new THREE.MeshBasicMaterial({
+      map: this.pbrMaps.emissiveMap,
+      color: 0xffe6b3
+    })
+
+    // 1. 中央开放式航空桁架主脊柱 (Open-Frame Aerospace Lattice Spine)
     for (let i = -8; i <= 8; i++) {
-      const y = i * 0.55
-      const coreMod = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.28, 0.28, 0.48, 8),
-        Math.abs(i) % 3 === 1 ? kaptonGoldMat : brushedTitanium
+      const y = i * 0.58
+      // 内部圆柱形生命保障加压舱
+      const habMod = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.24, 0.24, 0.52, 12),
+        Math.abs(i) % 3 === 1 ? kaptonGoldFoil : brushedTitanium
       )
-      coreMod.position.y = y
-      group.add(coreMod)
+      habMod.position.y = y
+      group.add(habMod)
 
-      // 两侧球形聚变燃料贮箱 (Spherical Propellant Tanks)
+      // 外部四角工字开放式保护桁架笼 (Lattice Box Cage)
+      for (let c = 0; c < 4; c++) {
+        const cAng = (c / 4) * Math.PI * 2 + Math.PI / 4
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.56, 0.045), openTrussMat)
+        leg.position.set(Math.cos(cAng) * 0.38, y, Math.sin(cAng) * 0.38)
+        group.add(leg)
+      }
+
+      // 交叉加固环梁
+      const ringCollar = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.06, 0.64), openTrussMat)
+      ringCollar.position.y = y + 0.26
+      group.add(ringCollar)
+
+      // 两侧球形低温聚变推进剂贮箱 (Spherical Cryo-Propellant Tanks with Gold Kapton)
       if (i % 2 === 0) {
-        for (const s of [-0.46, 0.46]) {
-          const tank = new THREE.Mesh(
-            new THREE.SphereGeometry(0.16, 16, 16),
-            i % 4 === 0 ? kaptonGoldMat : brushedTitanium
-          )
+        for (const s of [-0.48, 0.48]) {
+          const tank = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), kaptonGoldFoil)
           tank.position.set(s, y, 0)
           group.add(tank)
         }
       }
     }
 
-    // 2. 分割为 16 个弧形增压舱段的双层反向旋转重力环 + 外部散热翼片
-    const buildSegmentedGravityRing = (radius: number) => {
-      const rGroup = new THREE.Group()
-      const baseTorus = new THREE.Mesh(new THREE.TorusGeometry(radius, 0.14, 16, 64), darkTrussMat)
-      baseTorus.rotation.x = Math.PI * 0.5
-      rGroup.add(baseTorus)
-
-      const winStrip = new THREE.Mesh(new THREE.TorusGeometry(radius - 0.12, 0.06, 8, 64), cabinWinMat)
-      winStrip.rotation.x = Math.PI * 0.5
-      rGroup.add(winStrip)
+    // 2. 16 舱段双层反向旋转离心重力环 (16-Segment Curved Centrifuge Rings with Bellows)
+    const buildSegmentedCentrifuge = (radius: number) => {
+      const ringG = new THREE.Group()
 
       for (let m = 0; m < 16; m++) {
         const ang = (m / 16) * Math.PI * 2
-        const mod = new THREE.Mesh(
-          new THREE.BoxGeometry(0.36, 0.34, 0.58),
-          m % 4 === 0 ? kaptonGoldMat : brushedTitanium
+        // 弧形居住舱段
+        const segment = new THREE.Mesh(
+          new THREE.BoxGeometry(0.38, 0.36, 0.62),
+          m % 4 === 0 ? kaptonGoldFoil : brushedTitanium
         )
-        mod.position.set(Math.cos(ang) * radius, 0, Math.sin(ang) * radius)
-        mod.rotation.y = -ang
-        rGroup.add(mod)
+        segment.position.set(Math.cos(ang) * radius, 0, Math.sin(ang) * radius)
+        segment.rotation.y = -ang
+        ringG.add(segment)
 
-        // 外部白色散热百叶鳍片
+        // 柔性过渡膨胀风琴节 (Flexible Bellows)
+        const bellow = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.12, 12), openTrussMat)
+        bellow.rotation.z = Math.PI * 0.5
+        bellow.rotation.y = -ang
+        bellow.position.set(Math.cos(ang + Math.PI / 16) * radius, 0, Math.sin(ang + Math.PI / 16) * radius)
+        ringG.add(bellow)
+
+        // 外部百叶式辐射散热片 (Exterior Radiator Panels)
         if (m % 2 === 0) {
-          const radiator = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.02, 0.28), brushedTitanium)
-          radiator.position.set(Math.cos(ang) * (radius + 0.38), 0, Math.sin(ang) * (radius + 0.38))
-          radiator.rotation.y = -ang
-          rGroup.add(radiator)
+          const rad = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.02, 0.32), brushedTitanium)
+          rad.position.set(Math.cos(ang) * (radius + 0.42), 0, Math.sin(ang) * (radius + 0.42))
+          rad.rotation.y = -ang
+          ringG.add(rad)
         }
       }
 
+      // 观察舷窗发光带
+      const winRing = new THREE.Mesh(new THREE.TorusGeometry(radius - 0.12, 0.05, 8, 64), windowStrips)
+      winRing.rotation.x = Math.PI * 0.5
+      ringG.add(winRing)
+
+      // 8 根辐射状钛合金交通辐条
       for (let s = 0; s < 8; s++) {
-        const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, radius * 2, 8), brushedTitanium)
+        const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.048, radius * 2, 8), openTrussMat)
         spoke.rotation.z = Math.PI * 0.5
         spoke.rotation.y = (s / 8) * Math.PI
-        rGroup.add(spoke)
+        ringG.add(spoke)
       }
-      return rGroup
+      return ringG
     }
 
-    const ringUpper = buildSegmentedGravityRing(2.45)
-    ringUpper.position.y = 1.25
-    const ringLower = buildSegmentedGravityRing(2.45)
-    ringLower.position.y = -1.25
+    const ringUpper = buildSegmentedCentrifuge(2.55)
+    ringUpper.position.y = 1.35
+    const ringLower = buildSegmentedCentrifuge(2.55)
+    ringLower.position.y = -1.35
     group.add(ringUpper, ringLower)
 
-    // 3. 8 幅 ISS 级双折蓝宝石硅光伏阵列翼 (Articulated Double-Folding Solar Array Wings)
-    const crossBoom = new THREE.Mesh(new THREE.BoxGeometry(11.2, 0.22, 0.22), brushedTitanium)
-    group.add(crossBoom)
+    // 3. 8 幅 ISS 级双折蓝宝石硅光伏翼板 (Articulated Deployable Photovoltaic Wings)
+    const mainBoom = new THREE.Mesh(new THREE.BoxGeometry(11.8, 0.22, 0.22), openTrussMat)
+    group.add(mainBoom)
 
     for (const side of [-1, 1]) {
       for (let idx = 1; idx <= 2; idx++) {
-        const x = side * (2.9 + idx * 1.65)
-        const goldGimbal = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.38, 12), kaptonGoldMat)
-        goldGimbal.position.set(x, 0, 0)
-        group.add(goldGimbal)
+        const x = side * (3.1 + idx * 1.7)
+        // 旋转式双轴驱动万向铰链座 (Solar Alpha Rotary Joint)
+        const sarj = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.42, 12), kaptonGoldFoil)
+        sarj.position.set(x, 0, 0)
+        group.add(sarj)
 
         for (const zDir of [-1, 1]) {
-          // 双折主副翼板 + 中央金属支撑横梁
-          const wingFrame = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 2.9), brushedTitanium)
-          wingFrame.position.set(x, 0, zDir * 1.55)
-          group.add(wingFrame)
+          // 4 块独立铰接子电池翼板 (4 Sub-Panels per Wing = 32 Total)
+          for (let p = 0; p < 2; p++) {
+            const pX = x + (p === 0 ? -0.42 : 0.42)
+            const pZ = zDir * 1.65
+            const wingBlanket = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.024, 2.85), darkSiliconMat)
+            wingBlanket.position.set(pX, 0, pZ)
+            wingBlanket.rotation.x = 0.12 * zDir
+            group.add(wingBlanket)
 
-          for (const subX of [-0.36, 0.36]) {
-            const blanket = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.025, 2.75), solarWingMat)
-            blanket.position.set(x + subX, 0, zDir * 1.55)
-            blanket.rotation.z = 0.08
-            group.add(blanket)
+            // 太阳翼背部轻量化展开三角桁架 (Deployment Mast)
+            const mastFrame = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 2.9, 4), openTrussMat)
+            mastFrame.position.set(pX, 0.03, pZ)
+            mastFrame.rotation.x = Math.PI * 0.5 + 0.12 * zDir
+            group.add(mastFrame)
           }
         }
       }
     }
 
-    // 4. 导航信标灯
-    for (const p of [
-      new THREE.Vector3(0, 4.8, 0),
-      new THREE.Vector3(0, -4.8, 0),
-      new THREE.Vector3(5.6, 0.2, 0),
-      new THREE.Vector3(-5.6, 0.2, 0)
+    // 4. 空间站高频导航频闪灯 (Red Collision Avoidance Strobes)
+    for (const pos of [
+      new THREE.Vector3(0, 5.2, 0),
+      new THREE.Vector3(0, -5.2, 0),
+      new THREE.Vector3(6.2, 0.2, 0),
+      new THREE.Vector3(-6.2, 0.2, 0)
     ]) {
-      const s = new THREE.Mesh(
-        new THREE.SphereGeometry(0.09, 10, 10),
+      const strobe = new THREE.Mesh(
+        new THREE.SphereGeometry(0.08, 8, 8),
         new THREE.MeshBasicMaterial({ color: 0xff2a4d })
       )
-      s.position.copy(p)
-      group.add(s)
-      strobes.push(s)
+      strobe.position.copy(pos)
+      group.add(strobe)
+      strobes.push(strobe)
     }
 
     return { group, ringUpper, ringLower, strobes }
   }
 
   // ============================================================================
-  // 3E. 极光号斯坦福圆环轨道城 (亮白钛合金倒角装甲 + 12根辐条穿梭机 + 船坞护卫舰 + 暖金内城)
+  // 3E. NODE 6: HABITAT RING AURORA (SPRAWLING ZERO-G SPACEPORT & BIOSPHERE)
   // ============================================================================
   public buildHabitatRingAurora(): THREE.Group {
     const aurora = new THREE.Group()
 
-    const whiteTitanium = new THREE.MeshStandardMaterial({
+    const beveledTitanium = new THREE.MeshStandardMaterial({
       color: 0xd8e2ec,
-      map: this.armorAlbedo,
-      bumpMap: this.armorBump,
-      bumpScale: 0.018,
-      metalness: 0.78,
-      roughness: 0.22,
-      envMapIntensity: 1.8
+      map: this.pbrMaps.map,
+      bumpMap: this.pbrMaps.bumpMap,
+      bumpScale: 0.02,
+      roughnessMap: this.pbrMaps.roughnessMap,
+      metalness: 0.82,
+      roughness: 0.24,
+      envMapIntensity: 2.0
     })
-    const gunmetalMat = new THREE.MeshStandardMaterial({
+
+    const darkAlloy = new THREE.MeshStandardMaterial({
       color: 0x334155,
-      metalness: 0.86,
+      metalness: 0.88,
       roughness: 0.28,
       envMapIntensity: 1.8
     })
-    const kaptonMat = new THREE.MeshStandardMaterial({
+
+    const goldMirrorMat = new THREE.MeshStandardMaterial({
       color: 0xd4af37,
-      metalness: 0.9,
-      roughness: 0.2,
-      envMapIntensity: 1.9
+      metalness: 0.94,
+      roughness: 0.15,
+      envMapIntensity: 2.2
     })
-    const cityscapeMat = new THREE.MeshBasicMaterial({
-      map: this.walkwayLightsTex,
+
+    const warmCityLights = new THREE.MeshBasicMaterial({
+      map: this.pbrMaps.emissiveMap,
       color: 0xffe6b3
     })
 
-    // 1. 斯坦福主环与内生态穹顶环
-    const outerRing = new THREE.Mesh(new THREE.TorusGeometry(5.2, 0.45, 24, 96), whiteTitanium)
-    const innerRing = new THREE.Mesh(new THREE.TorusGeometry(3.4, 0.26, 20, 72), gunmetalMat)
-    const cityInterior = new THREE.Mesh(new THREE.TorusGeometry(4.78, 0.18, 12, 96), cityscapeMat)
-    const subCityInterior = new THREE.Mesh(new THREE.TorusGeometry(3.16, 0.1, 12, 72), cityscapeMat)
-    aurora.add(outerRing, innerRing, cityInterior, subCityInterior)
+    // 1. 斯坦福主圆环外装甲与内环生物圈玻璃穹顶 (Outer Armored Ring & Inner Biosphere Valley)
+    const mainTorus = new THREE.Mesh(new THREE.TorusGeometry(5.4, 0.48, 24, 96), beveledTitanium)
+    const subTorus = new THREE.Mesh(new THREE.TorusGeometry(3.6, 0.28, 20, 72), darkAlloy)
+    const cityStrip = new THREE.Mesh(new THREE.TorusGeometry(4.95, 0.18, 12, 96), warmCityLights)
+    aurora.add(mainTorus, subTorus, cityStrip)
 
-    // 2. 24 组倒角装甲居住区模块
+    // 2. 24 组倒角重装生活舱段与轴向太阳反射镜 (Axial Mirror Reflectors)
     for (let i = 0; i < 24; i++) {
       const ang = (i / 24) * Math.PI * 2
-      const bay = new THREE.Mesh(
-        new THREE.BoxGeometry(0.55, 1.05, 0.98),
-        i % 4 === 0 ? kaptonMat : whiteTitanium
-      )
-      bay.position.set(Math.cos(ang) * 5.2, Math.sin(ang) * 5.2, 0)
-      bay.rotation.z = ang
-      aurora.add(bay)
+      const block = new THREE.Mesh(new THREE.BoxGeometry(0.62, 1.15, 1.05), beveledTitanium)
+      block.position.set(Math.cos(ang) * 5.4, Math.sin(ang) * 5.4, 0)
+      block.rotation.z = ang
+      aurora.add(block)
+
+      // 轴向镀金折射反光板 (Axial Mirrors directing sunlight to interior valley)
+      if (i % 3 === 0) {
+        const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.02, 1.4), goldMirrorMat)
+        mirror.position.set(Math.cos(ang) * 4.4, Math.sin(ang) * 4.4, 0.45)
+        mirror.rotation.z = ang
+        mirror.rotation.x = 0.35
+        aurora.add(mirror)
+      }
     }
 
-    // 3. 12 根辐射状天梯辐条与发光穿梭列车
-    for (let i = 0; i < 12; i++) {
-      const ang = (i / 12) * Math.PI
-      const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 10.4, 10), gunmetalMat)
+    // 3. 12 根张紧桁架电梯辐条与发光轿厢 (12 Tensioned Lattice Elevator Spokes)
+    for (let s = 0; s < 12; s++) {
+      const ang = (s / 12) * Math.PI
+      const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 10.8, 8), darkAlloy)
       spoke.rotation.z = ang
       aurora.add(spoke)
+
+      // 沿辐条上下运行的发光穿梭客运舱
+      for (const dist of [-2.4, 2.4]) {
+        const pod = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.32, 0.24), beveledTitanium)
+        pod.position.set(Math.cos(ang) * dist, Math.sin(ang) * dist, 0)
+        aurora.add(pod)
+      }
     }
 
-    // 4. 中央零重力船坞中枢与停泊护卫舰
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.78, 4.4, 24), whiteTitanium)
-    hub.rotation.x = Math.PI * 0.5
-    aurora.add(hub)
+    // 4. 中央零重力太空港中枢 (Sprawling Zero-G Spaceport Core: Hubs + Dishes + Antennas)
+    const zeroGHub = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 4.8, 24), beveledTitanium)
+    zeroGHub.rotation.x = Math.PI * 0.5
+    aurora.add(zeroGHub)
 
-    for (let c = 0; c < 4; c++) {
-      const cAng = (c / 4) * Math.PI * 2
-      const corvette = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.95, 8), whiteTitanium)
-      corvette.position.set(Math.cos(cAng) * 1.25, Math.sin(cAng) * 1.25, 1.6)
-      corvette.rotation.x = Math.PI * 0.5
-      aurora.add(corvette)
+    for (const zDir of [-1, 1]) {
+      // 旋转抛物面通信雷达天线 (Communications Antenna Dishes)
+      const dish = new THREE.Mesh(new THREE.ConeGeometry(0.68, 0.32, 24, 1, true), goldMirrorMat)
+      dish.position.z = zDir * 2.6
+      dish.rotation.x = zDir > 0 ? -Math.PI * 0.5 : Math.PI * 0.5
+      aurora.add(dish)
+
+      // 多轴停泊码头臂架 (Multi-Axis Docking Hub Arms)
+      for (let a = 0; a < 4; a++) {
+        const aAng = (a / 4) * Math.PI * 2
+        const dockArm = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.6, 8), darkAlloy)
+        dockArm.position.set(Math.cos(aAng) * 1.35, Math.sin(aAng) * 1.35, zDir * 1.5)
+        dockArm.rotation.z = aAng + Math.PI * 0.5
+        aurora.add(dockArm)
+      }
     }
 
     return aurora
   }
 
   // ============================================================================
-  // 3F. 深空预警与激光中继舰队 (5艘 JWST 18镜片镀金折反射镜 + 5层菱形遮阳帆 + 蓝光激光束)
+  // 3F. NODE 7: DEEP SPACE ARRAY (FLEET OF 5 JWST LASER RELAYS)
   // ============================================================================
   public buildDeepSpaceRelayFleet(): {
     group: THREE.Group
@@ -1053,31 +1325,27 @@ export class MegaStructuresBuilder {
   } {
     const fleet = new THREE.Group()
 
-    const goldBerylliumMat = new THREE.MeshStandardMaterial({
+    const goldBeryllium = new THREE.MeshStandardMaterial({
       color: 0xffcc33,
-      metalness: 0.95,
-      roughness: 0.1,
-      envMapIntensity: 2.2
+      metalness: 0.96,
+      roughness: 0.08,
+      envMapIntensity: 2.4
     })
-    const silverShieldMat = new THREE.MeshStandardMaterial({
+    const silverShield = new THREE.MeshStandardMaterial({
       color: 0xcbd5e1,
       metalness: 0.88,
-      roughness: 0.2,
+      roughness: 0.22,
       envMapIntensity: 1.8,
       side: THREE.DoubleSide
     })
-    const kaptonLayerMat = new THREE.MeshStandardMaterial({
+    const kaptonGold = new THREE.MeshStandardMaterial({
       color: 0xd97706,
-      metalness: 0.85,
-      roughness: 0.25,
+      metalness: 0.86,
+      roughness: 0.26,
       envMapIntensity: 1.8,
       side: THREE.DoubleSide
     })
-    const carbonStrutMat = new THREE.MeshStandardMaterial({
-      color: 0x1e293b,
-      metalness: 0.8,
-      roughness: 0.3
-    })
+    const darkBus = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.85, roughness: 0.3 })
 
     const laserShaderMat = new THREE.ShaderMaterial({
       uniforms: { uTime: { value: 0 } },
@@ -1092,9 +1360,9 @@ export class MegaStructuresBuilder {
         uniform float uTime;
         varying vec2 vUv;
         void main() {
-          float pulse = pow(0.5 + 0.5 * sin(vUv.y * 40.0 - uTime * 16.0), 6.0);
-          vec3 col = mix(vec3(0.0, 0.78, 1.0), vec3(0.9, 0.98, 1.0), pulse);
-          gl_FragColor = vec4(col, 0.22 + pulse * 0.42);
+          float pulse = pow(0.5 + 0.5 * sin(vUv.y * 42.0 - uTime * 18.0), 6.0);
+          vec3 col = mix(vec3(0.0, 0.82, 1.0), vec3(1.0, 1.0, 1.0), pulse);
+          gl_FragColor = vec4(col, 0.24 + pulse * 0.45);
         }
       `,
       transparent: true,
@@ -1102,12 +1370,12 @@ export class MegaStructuresBuilder {
       depthWrite: false
     })
 
-    const buildJWSTSatellite = (scale = 1.0) => {
-      const sat = new THREE.Group()
+    const buildJWSTObservatory = (scale = 1.0) => {
+      const obs = new THREE.Group()
 
-      // 18 片六角镀金铍反射主镜
-      const hexR = 0.26
-      const hexGeo = new THREE.CylinderGeometry(hexR * 0.95, hexR * 0.95, 0.045, 6)
+      // 18 片正六边形蜂窝镀金铍主反射镜 (18-Segment Gold Beryllium Primary Mirror)
+      const hexR = 0.28
+      const hexGeo = new THREE.CylinderGeometry(hexR * 0.94, hexR * 0.94, 0.045, 6)
       hexGeo.rotateX(Math.PI * 0.5)
 
       const coords: [number, number][] = [[0, 0]]
@@ -1119,68 +1387,81 @@ export class MegaStructuresBuilder {
         const a = (i / 12) * Math.PI * 2
         coords.push([Math.cos(a) * hexR * 3.42, Math.sin(a) * hexR * 3.42])
       }
-      coords.forEach(([x, y]) => {
-        const m = new THREE.Mesh(hexGeo, goldBerylliumMat)
-        m.position.set(x, y, 0)
-        sat.add(m)
+      coords.forEach(([hx, hy]) => {
+        const seg = new THREE.Mesh(hexGeo, goldBeryllium)
+        seg.position.set(hx, hy, 0)
+        obs.add(seg)
       })
 
-      // 碳纤维次镜三脚支撑臂
+      // 碳素桁架次镜支撑臂与圆形次镜 (Secondary Mirror Lattice Booms)
       for (let b = 0; b < 3; b++) {
         const a = (b / 3) * Math.PI * 2 + Math.PI / 6
-        const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.25, 6), carbonStrutMat)
-        strut.position.set(Math.cos(a) * 0.45, Math.sin(a) * 0.45, 0.58)
-        strut.lookAt(0, 0, 1.15)
-        strut.rotateX(Math.PI * 0.5)
-        sat.add(strut)
+        const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 1.35, 6), darkBus)
+        boom.position.set(Math.cos(a) * 0.48, Math.sin(a) * 0.48, 0.65)
+        boom.lookAt(0, 0, 1.25)
+        boom.rotateX(Math.PI * 0.5)
+        obs.add(boom)
       }
-      const secMirror = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.06, 6), goldBerylliumMat)
-      secMirror.rotation.x = Math.PI * 0.5
-      secMirror.position.z = 1.15
-      sat.add(secMirror)
+      const secM = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.06, 6), goldBeryllium)
+      secM.rotation.x = Math.PI * 0.5
+      secM.position.z = 1.25
+      obs.add(secM)
 
-      // 5 层银色/金箔菱形太阳帆隔热膜 (5-Layer Silver/Kapton Diamond Sunshield)
+      // 5 层菱形张力太阳帆隔热屏 (5-Layer Diamond Sunshield)
       for (let l = 0; l < 5; l++) {
-        const membrane = new THREE.Mesh(
-          new THREE.BoxGeometry(2.2 - l * 0.06, 1.35 - l * 0.04, 0.012),
-          l % 2 === 0 ? silverShieldMat : kaptonLayerMat
+        const shield = new THREE.Mesh(
+          new THREE.BoxGeometry(2.4 - l * 0.07, 1.45 - l * 0.05, 0.012),
+          l % 2 === 0 ? silverShield : kaptonGold
         )
-        membrane.position.set(0, -0.58 - l * 0.075, -0.25)
-        membrane.rotation.x = Math.PI * 0.47
-        membrane.rotation.z = Math.PI * 0.25
-        sat.add(membrane)
+        shield.position.set(0, -0.62 - l * 0.08, -0.26)
+        shield.rotation.x = Math.PI * 0.47
+        shield.rotation.z = Math.PI * 0.25
+        obs.add(shield)
       }
 
-      sat.scale.setScalar(scale)
-      return sat
+      // 探测器服务舱与激光光通讯发射机
+      const bus = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.55, 0.55), darkBus)
+      bus.position.set(0, -0.28, -0.42)
+      obs.add(bus)
+
+      const ionThruster = new THREE.Mesh(
+        new THREE.ConeGeometry(0.12, 0.72, 16),
+        new THREE.MeshBasicMaterial({ color: 0x00d8ff, transparent: true, opacity: 0.72, blending: THREE.AdditiveBlending })
+      )
+      ionThruster.rotation.x = -Math.PI * 0.5
+      ionThruster.position.set(0, -0.28, -0.85)
+      obs.add(ionThruster)
+
+      obs.scale.setScalar(scale)
+      return obs
     }
 
-    const nodes = [
+    const fleetPos = [
       new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(-3.4, 1.15, -2.2),
-      new THREE.Vector3(3.6, -0.95, -2.0),
-      new THREE.Vector3(-6.2, -1.3, -5.2),
-      new THREE.Vector3(6.4, 1.5, -5.0)
+      new THREE.Vector3(-3.8, 1.25, -2.4),
+      new THREE.Vector3(4.0, -1.05, -2.2),
+      new THREE.Vector3(-6.8, -1.4, -5.5),
+      new THREE.Vector3(7.2, 1.6, -5.4)
     ]
-    nodes.forEach((p, idx) => {
-      const s = buildJWSTSatellite(idx === 0 ? 1.2 : 0.88)
-      s.position.copy(p)
-      s.rotation.y = 0.22
-      fleet.add(s)
+    fleetPos.forEach((pos, idx) => {
+      const probe = buildJWSTObservatory(idx === 0 ? 1.25 : 0.92)
+      probe.position.copy(pos)
+      probe.rotation.y = 0.22
+      fleet.add(probe)
     })
 
-    // 准直光学激光束网
-    const pairs: [number, number][] = [
+    // 星际准直脉冲激光通信网络 (Inter-Satellite Laser Comms Grid)
+    const links: [number, number][] = [
       [0, 1],
       [0, 2],
       [1, 3],
       [2, 4]
     ]
-    pairs.forEach(([a, b]) => {
-      const pA = nodes[a]
-      const pB = nodes[b]
-      const len = pA.distanceTo(pB)
-      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, len, 6), laserShaderMat)
+    links.forEach(([a, b]) => {
+      const pA = fleetPos[a]
+      const pB = fleetPos[b]
+      const dist = pA.distanceTo(pB)
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, dist, 6), laserShaderMat)
       beam.position.copy(pA).lerp(pB, 0.5)
       beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), pB.clone().sub(pA).normalize())
       fleet.add(beam)
@@ -1190,7 +1471,7 @@ export class MegaStructuresBuilder {
   }
 
   // ============================================================================
-  // 3G. 高对比度陨石坑月球与静海 3 座巨型月球核聚变放逐发动机
+  // 3G. NODE 8: LUNA & EXILE ENGINES (NO WHITEOUT + ENHANCED RIM LIGHTING)
   // ============================================================================
   public buildPhotorealisticLuna(moonRadius = 27.0): {
     group: THREE.Group
@@ -1199,13 +1480,14 @@ export class MegaStructuresBuilder {
     const group = new THREE.Group()
     const lunarRigs: BrutalistEngineRig[] = []
 
+    // 严控月球材质漫反射与高光反照率，杜绝太阳直射白曝 (No Blown-out White Sphere!)
     const moonMat = new THREE.MeshStandardMaterial({
       map: this.moonRegolithTex,
       bumpMap: this.moonRegolithTex,
-      bumpScale: 0.45,
-      color: 0xd0d5dd,
-      roughness: 0.88,
-      metalness: 0.04
+      bumpScale: 1.8,
+      color: 0x7a8088,
+      roughness: 0.94,
+      metalness: 0.02
     })
 
     const loader = new THREE.TextureLoader()
@@ -1222,21 +1504,37 @@ export class MegaStructuresBuilder {
     const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(moonRadius, 96, 96), moonMat)
     group.add(moonMesh)
 
-    // 在正对太阳与相机的静海表面部署 3 座月球核聚变放逐发动机
+    // 在静海表面部署 3 座巨型核聚变放逐发动机
     const engineNormals = [
-      new THREE.Vector3(0.32, 0.24, 0.91).normalize(),
-      new THREE.Vector3(0.46, 0.36, 0.81).normalize(),
-      new THREE.Vector3(0.18, 0.12, 0.97).normalize()
+      new THREE.Vector3(0.35, 0.22, 0.91).normalize(),
+      new THREE.Vector3(0.48, 0.35, 0.80).normalize(),
+      new THREE.Vector3(0.20, 0.12, 0.97).normalize()
     ]
+
     engineNormals.forEach((n, idx) => {
-      const rig = this.buildBrutalistPlanetaryEngine(idx === 0 ? 1.85 : 1.45, 13.0, 0.0)
+      const rig = this.buildBrutalistPlanetaryEngine(idx === 0 ? 1.85 : 1.45, 13.5, 0.0)
       rig.group.position.copy(n.clone().multiplyScalar(moonRadius - 0.1))
       rig.group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n)
+
+      // 增加环绕式挖掘脚手架与泛光轮廓灯，消除黑色剪影！
+      const scaffoldRing = new THREE.Mesh(
+        new THREE.TorusGeometry(1.4, 0.05, 8, 24),
+        new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.85, roughness: 0.3 })
+      )
+      scaffoldRing.rotation.x = Math.PI * 0.5
+      scaffoldRing.position.y = 0.2
+      rig.group.add(scaffoldRing)
+
+      // 局部暖金辅助轮廓光源
+      const localRimLight = new THREE.PointLight(0xffaa44, 2.5, 18)
+      localRimLight.position.set(0, 1.2, 0.8)
+      rig.group.add(localRimLight)
+
       group.add(rig.group)
       lunarRigs.push(rig)
     })
 
-    // 被照亮的喷射月尘粒子云
+    // 月壤喷射碎屑粒子云
     const dustCount = 420
     const dPos = new Float32Array(dustCount * 3)
     const center = engineNormals[0].clone().multiplyScalar(moonRadius + 1.5)
