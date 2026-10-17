@@ -6,6 +6,10 @@ export interface BrutalistEngineRig {
   plumeAssembly: THREE.Group
   coreRayMat: THREE.ShaderMaterial
   sheathMat: THREE.ShaderMaterial
+  godRayMat?: THREE.ShaderMaterial
+  ionPoints?: THREE.Points
+  ionVelocities?: Float32Array
+  vaporSprites?: THREE.Sprite[]
   shockRingMesh?: THREE.Mesh
   crownFlareMesh?: THREE.Mesh
   strobes: THREE.Mesh[]
@@ -28,6 +32,7 @@ export class MegaStructuresBuilder {
   public moonRegolithTex: THREE.CanvasTexture
   public softGlowSprite: THREE.CanvasTexture
   public mistSpriteTex: THREE.CanvasTexture
+  public denseSteamTex: THREE.CanvasTexture
 
   constructor() {
     this.pbrMaps = this.createIndustrialPBRMaps()
@@ -40,6 +45,7 @@ export class MegaStructuresBuilder {
     this.moonRegolithTex = this.createSharpLunarCraterTexture()
     this.softGlowSprite = this.createSoftRadialGlowSprite()
     this.mistSpriteTex = this.createVolumetricMistTexture()
+    this.denseSteamTex = this.createDenseSteamCloudTexture()
   }
 
   // ============================================================================
@@ -282,6 +288,35 @@ export class MegaStructuresBuilder {
     return new THREE.CanvasTexture(c)
   }
 
+  private createDenseSteamCloudTexture(): THREE.CanvasTexture {
+    const c = document.createElement('canvas')
+    c.width = 256
+    c.height = 256
+    const ctx = c.getContext('2d')!
+    ctx.clearRect(0, 0, 256, 256)
+
+    const puffs = [
+      { x: 128, y: 128, r: 85, a: 0.45 },
+      { x: 100, y: 110, r: 65, a: 0.35 },
+      { x: 155, y: 115, r: 60, a: 0.35 },
+      { x: 115, y: 155, r: 55, a: 0.30 },
+      { x: 145, y: 150, r: 58, a: 0.32 },
+      { x: 85, y: 135, r: 45, a: 0.25 },
+      { x: 170, y: 135, r: 45, a: 0.25 }
+    ]
+    puffs.forEach((p) => {
+      const g = ctx.createRadialGradient(p.x, p.y, 4, p.x, p.y, p.r)
+      g.addColorStop(0, `rgba(225, 242, 255, ${p.a})`)
+      g.addColorStop(0.5, `rgba(165, 205, 245, ${p.a * 0.55})`)
+      g.addColorStop(1, 'rgba(100, 150, 200, 0.0)')
+      ctx.fillStyle = g
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
+      ctx.fill()
+    })
+    return new THREE.CanvasTexture(c)
+  }
+
   private createFrozenWanderingEarthTextures() {
     const dayC = document.createElement('canvas')
     dayC.width = 2048
@@ -443,7 +478,7 @@ export class MegaStructuresBuilder {
   }
 
   // ============================================================================
-  // 2. 4-LAYER FLUID-DYNAMICS PLASMA PLUME SHADER (7 CORES + MACH SHOCK DIAMONDS)
+  // 2. 4-LAYER FLUID-DYNAMICS PLASMA PLUME & GOD-RAY SHADERS
   // ============================================================================
   public createCollimatedCoreRayShader(ignitionThreshold = 0.0): THREE.ShaderMaterial {
     return new THREE.ShaderMaterial({
@@ -481,25 +516,25 @@ export class MegaStructuresBuilder {
           if (ig <= 0.01 || uThrust <= 0.01) discard;
 
           float cosView = abs(dot(normalize(vNormal), normalize(vViewDir)));
-          float corePin = pow(cosView, 2.5);
+          float corePin = pow(cosView, 2.0);
 
-          // 核心点 1：下部 30% 脉动马赫震波环 (Mach Shock-Diamond Oscillations in lower 30%)
-          float machWave = sin(vUv.y * 65.0 - uTime * 18.0);
-          float shockDiamond = smoothstep(0.4, 0.95, machWave) * smoothstep(0.35, 0.0, vUv.y) * 0.55;
+          // 核心点 1：下部 35% 脉动马赫震波环 (Mach Shock-Diamond Oscillations in lower 35%)
+          float machWave = sin(vUv.y * 65.0 - uTime * 20.0);
+          float shockDiamond = smoothstep(0.35, 0.95, machWave) * smoothstep(0.40, 0.02, vUv.y) * 0.75;
 
           // 纵向羽流高速纤维流动
-          float filaments = 0.88 + 0.12 * sin(vUv.x * 42.0 + sin(vUv.y * 24.0 - uTime * 16.0));
+          float filaments = 0.85 + 0.15 * sin(vUv.x * 48.0 + sin(vUv.y * 28.0 - uTime * 18.0));
           // 顶部羽化消散 (NEVER a flat cut top!)
-          float featherTop = smoothstep(1.0, 0.65, vUv.y) * smoothstep(0.0, 0.02, vUv.y);
+          float featherTop = smoothstep(1.0, 0.60, vUv.y) * smoothstep(0.0, 0.015, vUv.y);
           float growMask = smoothstep(vUv.y, vUv.y - 0.12, ig);
 
-          // 纯白高光白芯 (#ffffff) -> 蔚蓝等离子电离边缘 (#00f0ff)
-          vec3 nominalCol = mix(vec3(0.0, 0.94, 1.0), vec3(1.3, 1.45, 1.6), corePin + shockDiamond * 0.4);
+          // 纯白高光白芯 (#ffffff) -> 蔚蓝等离子电离边缘 (#00e5ff)
+          vec3 nominalCol = mix(vec3(0.08, 0.82, 1.6), vec3(2.2, 2.35, 2.5), corePin + shockDiamond * 0.5);
           // 超载模式：优雅切换为白金白炽核心 (#fff2cc) 与暖橙护套 (#ff8800)
-          vec3 overclockCol = mix(vec3(1.0, 0.53, 0.0), vec3(1.4, 1.3, 0.95), corePin + shockDiamond * 0.4);
+          vec3 overclockCol = mix(vec3(1.3, 0.55, 0.05), vec3(2.5, 2.2, 1.4), corePin + shockDiamond * 0.5);
           vec3 finalCol = mix(nominalCol, overclockCol, uOverclock) * filaments;
 
-          float alpha = clamp((corePin * 0.65 + shockDiamond) * featherTop * growMask * clamp(uThrust, 0.2, 1.15), 0.0, 0.72);
+          float alpha = clamp((corePin * 0.75 + shockDiamond) * featherTop * growMask * clamp(uThrust, 0.25, 1.2), 0.0, 0.88);
           gl_FragColor = vec4(finalCol, alpha);
         }
       `,
@@ -559,23 +594,23 @@ export class MegaStructuresBuilder {
           float ig = clamp((uIgnitionProgress - uIgnitionThreshold) * 4.5, 0.0, 1.0);
           if (ig <= 0.01 || uThrust <= 0.01) discard;
 
-          // 核心点 2：径向高斯柔化衰减 exp(-pow(r * 3.2, 2.0))
+          // 视线夹角高斯衰减：消除圆柱侧缘生硬切线，保证柔和体积光晕
           float cosAngle = abs(dot(normalize(vNormal), normalize(vViewDir)));
           float r = 1.0 - cosAngle;
-          float gaussianRadial = exp(-pow(r * 3.2, 2.0));
+          float gaussianRadial = exp(-pow(r * 2.5, 2.0));
 
-          // 顶部羽化消散 smoothstep(1.0, 0.65, vUv.y)
-          float featherTop = smoothstep(1.0, 0.65, vUv.y) * smoothstep(0.0, 0.04, vUv.y);
+          // 顶部羽化消散 smoothstep(1.0, 0.55, vUv.y)
+          float featherTop = smoothstep(1.0, 0.55, vUv.y) * smoothstep(0.0, 0.03, vUv.y);
 
-          // 向上滚动的湍流等离子纤维 (vUv.y - uTime * 5.0)
-          vec2 uvFlow = vec2(vUv.x * 8.0, vUv.y * 12.0 - uTime * 5.0);
-          float n = noise2(uvFlow) * 0.7 + noise2(uvFlow * 2.3 + 1.7) * 0.3;
+          // 向上滚动的湍流等离子纤维 (vUv.y - uTime * 6.0)
+          vec2 uvFlow = vec2(vUv.x * 10.0, vUv.y * 14.0 - uTime * 6.0);
+          float n = noise2(uvFlow) * 0.65 + noise2(uvFlow * 2.5 + 2.1) * 0.35;
 
-          vec3 colBlue = vec3(0.05, 0.62, 1.0);
-          vec3 colGold = vec3(1.0, 0.52, 0.06);
+          vec3 colBlue = vec3(0.12, 0.72, 1.45);
+          vec3 colGold = vec3(1.35, 0.65, 0.12);
           vec3 col = mix(colBlue, colGold, uOverclock);
 
-          float alpha = clamp(gaussianRadial * featherTop * (0.65 + n * 0.35) * ig * 0.32, 0.0, 0.35);
+          float alpha = clamp(gaussianRadial * featherTop * (0.75 + n * 0.45) * ig * 0.65 * uThrust, 0.0, 0.65);
           gl_FragColor = vec4(col, alpha);
         }
       `,
@@ -586,8 +621,63 @@ export class MegaStructuresBuilder {
     })
   }
 
+  public createAtmosphericGodRayShader(ignitionThreshold = 0.0): THREE.ShaderMaterial {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uThrust: { value: 1.0 },
+        uOverclock: { value: 0.0 },
+        uIgnitionProgress: { value: 1.0 },
+        uIgnitionThreshold: { value: ignitionThreshold }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform float uThrust;
+        uniform float uOverclock;
+        uniform float uIgnitionProgress;
+        uniform float uIgnitionThreshold;
+        varying vec2 vUv;
+
+        void main() {
+          float ig = clamp((uIgnitionProgress - uIgnitionThreshold) * 4.5, 0.0, 1.0);
+          if (ig <= 0.01 || uThrust <= 0.01) discard;
+
+          // 横向高斯衰减：从中心向两侧柔和羽化
+          float xDist = abs(vUv.x - 0.5) * 2.0;
+          float gaussX = exp(-pow(xDist * 2.2, 2.0));
+
+          // 纵向消散与基部渐出
+          float vertFade = smoothstep(1.0, 0.55, vUv.y) * smoothstep(0.0, 0.025, vUv.y);
+
+          // 动态高光光柱闪烁
+          float shimmer = 0.85 + 0.15 * sin(vUv.y * 30.0 - uTime * 7.5);
+
+          vec3 colBlue = vec3(0.18, 0.70, 1.4);
+          vec3 colCore = vec3(0.9, 1.2, 1.6);
+          vec3 colGold = vec3(1.35, 0.85, 0.4);
+          vec3 baseCol = mix(colBlue, colGold, uOverclock);
+          vec3 finalCol = mix(baseCol, colCore, gaussX * 0.45);
+
+          float alpha = clamp(gaussX * vertFade * shimmer * ig * 0.48 * uThrust, 0.0, 0.65);
+          gl_FragColor = vec4(finalCol, alpha);
+        }
+      `,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    })
+  }
+
   // ============================================================================
-  // 3A. NODE 2: 11KM HEAVY-FUSION PLANETARY ENGINE (80+ CAD SUB-MESHES)
+  // 3A. NODE 2: 11KM HEAVY-FUSION PLANETARY ENGINE (120+ CAD SUB-MESHES & FLUID STACK)
   // ============================================================================
   public buildBrutalistPlanetaryEngine(
     scale = 1.0,
@@ -598,176 +688,260 @@ export class MegaStructuresBuilder {
     const strobes: THREE.Mesh[] = []
 
     const darkArmoredSteel = new THREE.MeshStandardMaterial({
-      color: 0x1a1e26,
+      color: 0x222834,
       map: this.pbrMaps.map,
       bumpMap: this.pbrMaps.bumpMap,
-      bumpScale: 0.02,
+      bumpScale: 0.035,
       roughnessMap: this.pbrMaps.roughnessMap,
       emissiveMap: this.pbrMaps.emissiveMap,
       emissive: new THREE.Color(0xffffff),
       emissiveIntensity: 0.85,
+      metalness: 0.78,
+      roughness: 0.42,
+      envMapIntensity: 1.8
+    })
+
+    const gunmetal = new THREE.MeshStandardMaterial({
+      color: 0x1e2430,
       metalness: 0.85,
       roughness: 0.35,
       envMapIntensity: 1.8
     })
 
-    const gunmetal = new THREE.MeshStandardMaterial({
-      color: 0x2d3748,
-      metalness: 0.88,
-      roughness: 0.26,
-      envMapIntensity: 1.8
-    })
-
     const chromePiston = new THREE.MeshStandardMaterial({
-      color: 0xe2e8f0,
-      metalness: 0.95,
-      roughness: 0.12,
-      envMapIntensity: 2.2
+      color: 0xf1f5f9,
+      metalness: 0.98,
+      roughness: 0.08,
+      envMapIntensity: 2.4
     })
 
-    const cyanCoil = new THREE.MeshBasicMaterial({ color: 0x00f0ff })
-    const redStrobe = new THREE.MeshBasicMaterial({ color: 0xff2a4d })
+    const warningOrange = new THREE.MeshBasicMaterial({ color: 0xff9922 })
+    const cyanCoil = new THREE.MeshBasicMaterial({ color: 0x00f5ff })
+    const redStrobe = new THREE.MeshBasicMaterial({ color: 0xff1e38 })
 
     // -------------------------------------------------------------------------
-    // 1. Subterranean Blast Crater & Octagonal Armored Foundation Ring
+    // 1. 地下基座与八角环形防爆开挖深坑 (Subterranean Excavation Basin)
     // -------------------------------------------------------------------------
-    const baseOctagon = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.88, 0.16, 8), darkArmoredSteel)
-    baseOctagon.position.y = 0.08
+    const baseOctagon = new THREE.Mesh(new THREE.CylinderGeometry(0.88, 1.12, 0.18, 8), darkArmoredSteel)
+    baseOctagon.position.y = 0.09
     group.add(baseOctagon)
 
-    // 八面环形泄爆排气壕沟与防护外护堤 (Blast Deflector Trenches)
-    const blastDike = new THREE.Mesh(new THREE.TorusGeometry(0.96, 0.06, 8, 8), gunmetal)
+    // 八面环形泄爆排气壕沟与阶梯护堤 (Blast Deflector Trenches)
+    const blastDike = new THREE.Mesh(new THREE.TorusGeometry(1.22, 0.07, 8, 8), gunmetal)
     blastDike.rotation.x = Math.PI * 0.5
     blastDike.position.y = 0.06
     group.add(blastDike)
 
-    // 8 组外展重型液压 A-frame 斜撑桁架大腿 (8 Massive Splayed Hydraulic A-Frame Thrust Legs)
+    // -------------------------------------------------------------------------
+    // 2. 8 根野兽派外挑大支撑臂 (8 Massive Splayed Cathedral Flying Buttress Pylons)
+    // -------------------------------------------------------------------------
+    const buttressRadiusOuter = 1.25
     for (let i = 0; i < 8; i++) {
       const ang = (i / 8) * Math.PI * 2
       const legG = new THREE.Group()
       legG.rotation.y = ang
 
-      // A-frame 双主斜梁
-      for (const side of [-0.06, 0.06]) {
-        const strut = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.72, 0.09), darkArmoredSteel)
-        strut.position.set(side, 0.32, 0.72)
-        strut.rotation.x = -0.76
-        legG.add(strut)
+      // A. 主承力梯形巨型斜梁 (Tapered Monolithic Box Girder)
+      const mainGirder = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.92, 0.22), darkArmoredSteel)
+      mainGirder.position.set(0, 0.38, 0.85)
+      mainGirder.rotation.x = -0.72
+      legG.add(mainGirder)
+
+      // B. 双侧加固三角翼板 (Lateral Reinforcement Gussets)
+      for (const side of [-0.075, 0.075]) {
+        const gusset = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.84, 0.12), gunmetal)
+        gusset.position.set(side, 0.36, 0.83)
+        gusset.rotation.x = -0.72
+        legG.add(gusset)
       }
 
-      // 中央高压液压推力活塞
-      const hydPiston = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.62, 8), chromePiston)
-      hydPiston.position.set(0, 0.28, 0.76)
-      hydPiston.rotation.x = -0.76
+      // C. 中央超高压液压缓冲活塞柱 (High-Pressure Hydraulic Ram)
+      const hydPiston = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.78, 10), chromePiston)
+      hydPiston.position.set(0, 0.32, 0.90)
+      hydPiston.rotation.x = -0.72
       legG.add(hydPiston)
 
-      // 山体锚固履带装甲靴与防撞红闪灯
-      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, 0.28), gunmetal)
-      boot.position.set(0, 0.04, 1.02)
+      // D. 岩层重载履带锚固靴 (Heavy Armored Rock Shoe Boot)
+      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.12, 0.35), darkArmoredSteel)
+      boot.position.set(0, 0.06, buttressRadiusOuter)
       legG.add(boot)
 
-      const st = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 8), redStrobe)
-      st.position.set(0, 0.12, 1.1)
+      // E. 防撞警示红闪灯与黄色安全标语带
+      const st = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 8), redStrobe)
+      st.position.set(0, 0.15, buttressRadiusOuter + 0.12)
       legG.add(st)
       strobes.push(st)
 
-      // 周边防爆泛光照明塔 (Perimeter Floodlight Towers)
-      const towerPost = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.42, 6), darkArmoredSteel)
-      towerPost.position.set(0.14, 0.21, 0.98)
+      const warnBand = new THREE.Mesh(new THREE.BoxGeometry(0.33, 0.025, 0.12), warningOrange)
+      warnBand.position.set(0, 0.11, buttressRadiusOuter)
+      legG.add(warnBand)
+
+      // F. 防爆泛光投光灯塔 (Perimeter Floodlight Tower)
+      const towerPost = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.48, 6), darkArmoredSteel)
+      towerPost.position.set(0.18, 0.24, buttressRadiusOuter - 0.08)
       legG.add(towerPost)
 
       group.add(legG)
+
+      // G. 相邻两臂之间的横向弧形加固联络天桥 (Cathedral Cross-Tie Beam)
+      const nextAng = ((i + 1) / 8) * Math.PI * 2
+      const midAng = (ang + nextAng) * 0.5
+      const bridgeR = 0.92
+      const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.05, 0.08), gunmetal)
+      bridge.position.set(Math.cos(midAng) * bridgeR, 0.32, Math.sin(midAng) * bridgeR)
+      bridge.rotation.y = -midAng + Math.PI * 0.5
+      group.add(bridge)
     }
 
     // -------------------------------------------------------------------------
-    // 2. Hyperbolic Cooling Shroud & 32 Brutalist Vertical Buttress Fins
+    // 3. 双曲面收腰巨塔本体与 32 根外挑散热肋片 (Hyperbolic Tower & 32 Cooling Fins)
     // -------------------------------------------------------------------------
-    const coolingTower = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.42, 0.68, 0.62, 32, 1, true),
-      darkArmoredSteel
-    )
-    coolingTower.position.y = 0.39
-    group.add(coolingTower)
+    // 下部收腰基座 (Waisted Cooling Tower Body)
+    const towerGeo = new THREE.CylinderGeometry(0.54, 0.78, 0.45, 32, 1, true)
+    const towerMesh = new THREE.Mesh(towerGeo, darkArmoredSteel)
+    towerMesh.position.y = 0.30
+    group.add(towerMesh)
 
-    // 32 根锐利外挑式垂直结构散热肋片 (32 Sharp Vertical Structural Cooling Fins)
+    // 上部扩展火山口塔颈 (Upper Flared Neck)
+    const neckGeo = new THREE.CylinderGeometry(0.68, 0.54, 0.32, 32, 1, true)
+    const neckMesh = new THREE.Mesh(neckGeo, darkArmoredSteel)
+    neckMesh.position.y = 0.62
+    group.add(neckMesh)
+
+    // 32 根锐利垂直外挑结构散热肋片 (32 Sharp Vertical Structural Cooling Fins)
     for (let f = 0; f < 32; f++) {
       const fAng = (f / 32) * Math.PI * 2
-      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.64, 0.14), darkArmoredSteel)
-      fin.position.set(Math.cos(fAng) * 0.54, 0.39, Math.sin(fAng) * 0.54)
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.68, 0.20), darkArmoredSteel)
+      fin.position.set(Math.cos(fAng) * 0.62, 0.44, Math.sin(fAng) * 0.62)
       fin.rotation.y = -fAng
-      fin.rotation.x = -0.36
+      fin.rotation.x = -0.28
       group.add(fin)
     }
 
-    // 6 层水平加固外悬环形检修栈桥 (6 Horizontal Reinforcement Ring Gantries)
-    for (let t = 0; t < 6; t++) {
-      const ringR = 0.64 - t * 0.038
-      const ringY = 0.16 + t * 0.085
-      const gantry = new THREE.Mesh(new THREE.TorusGeometry(ringR, 0.012, 6, 32), gunmetal)
+    // 8 层水平加固外悬环形检修栈桥 (8 Horizontal Reinforcement Ring Gantries)
+    for (let t = 0; t < 8; t++) {
+      const ringR = 0.74 - t * 0.028 + (t > 4 ? (t - 4) * 0.04 : 0)
+      const ringY = 0.16 + t * 0.075
+      const gantry = new THREE.Mesh(new THREE.TorusGeometry(ringR, 0.014, 6, 32), gunmetal)
       gantry.rotation.x = Math.PI * 0.5
       gantry.position.y = ringY
       group.add(gantry)
     }
 
-    // 4 根贯穿塔身全高的外挂工字钢升降电梯井 (Vertical Elevator Shafts)
+    // 4 根全高外挂工字钢工程电梯井与发光轿厢 (Vertical Elevator Shafts)
     for (let e = 0; e < 4; e++) {
       const eAng = (e / 4) * Math.PI * 2 + Math.PI / 4
-      const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.66, 0.055), gunmetal)
-      shaft.position.set(Math.cos(eAng) * 0.56, 0.39, Math.sin(eAng) * 0.56)
+      const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.74, 0.065), gunmetal)
+      shaft.position.set(Math.cos(eAng) * 0.64, 0.44, Math.sin(eAng) * 0.64)
       group.add(shaft)
+
+      // 电梯透明黄色工作光舱
+      const car = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.04), warningOrange)
+      car.position.set(Math.cos(eAng) * 0.67, 0.25 + (e * 0.12), Math.sin(eAng) * 0.67)
+      group.add(car)
     }
 
     // -------------------------------------------------------------------------
-    // 3. 4km-Wide Upper Crater & 7-Nozzle Magnetic Accelerator Core
+    // 4. 4km 宽喷口上层重工业建筑群 (Upper Rim Superstructure & Machinery Modules)
     // -------------------------------------------------------------------------
-    const rimArmor = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.038, 10, 32), darkArmoredSteel)
+    // 喷口环形重装甲唇缘 (Armored Toroidal Crater Lip)
+    const rimArmor = new THREE.Mesh(new THREE.TorusGeometry(0.68, 0.045, 12, 32), darkArmoredSteel)
     rimArmor.rotation.x = Math.PI * 0.5
-    rimArmor.position.y = 0.7
+    rimArmor.position.y = 0.76
     group.add(rimArmor)
 
-    // 喷口上边缘 8 盏防撞航标灯
+    // 16 座环绕喷口边缘的重型机械模块建筑与检修机房 (16 Crenellated Machinery Housings)
+    for (let b = 0; b < 16; b++) {
+      const bAng = (b / 16) * Math.PI * 2
+      const block = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.16), darkArmoredSteel)
+      block.position.set(Math.cos(bAng) * 0.72, 0.81, Math.sin(bAng) * 0.72)
+      block.rotation.y = -bAng
+      group.add(block)
+
+      // 机房屋顶通气管道与散热百叶窗
+      const vent = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.09), gunmetal)
+      vent.position.set(Math.cos(bAng) * 0.72, 0.89, Math.sin(bAng) * 0.72)
+      vent.rotation.y = -bAng
+      group.add(vent)
+    }
+
+    // 4 组向内伸出的悬臂重型起重行车 (4 Heavy Cantilevered Gantry Crane Booms)
+    for (let c = 0; c < 4; c++) {
+      const cAng = (c / 4) * Math.PI * 2 + 0.35
+      const crane = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.28), warningOrange)
+      crane.position.set(Math.cos(cAng) * 0.62, 0.85, Math.sin(cAng) * 0.62)
+      crane.rotation.y = -cAng + Math.PI * 0.5
+      group.add(crane)
+    }
+
+    // 4 根斜向重元素矿石燃料注入滑道 (4 Angled Rock Fuel Feed Chutes)
+    for (let ch = 0; ch < 4; ch++) {
+      const chAng = (ch / 4) * Math.PI * 2 + 1.15
+      const chute = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.42, 8), gunmetal)
+      chute.position.set(Math.cos(chAng) * 0.65, 0.68, Math.sin(chAng) * 0.65)
+      chute.rotation.x = 0.55
+      chute.rotation.y = -chAng
+      group.add(chute)
+    }
+
+    // 喷口上沿 8 盏高照度防撞红闪灯
     for (let s = 0; s < 8; s++) {
       const sAng = (s / 8) * Math.PI * 2
-      const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), redStrobe)
-      strobe.position.set(Math.cos(sAng) * 0.44, 0.73, Math.sin(sAng) * 0.44)
+      const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 8), redStrobe)
+      strobe.position.set(Math.cos(sAng) * 0.73, 0.89, Math.sin(sAng) * 0.73)
       group.add(strobe)
       strobes.push(strobe)
     }
 
-    // 凹陷聚变点火室基底与磁约束环
-    const throatPlate = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.08, 24), gunmetal)
-    throatPlate.position.y = 0.66
+    // -------------------------------------------------------------------------
+    // 5. 凹陷重聚变反应加速膛与 7 联装喷口 (Recessed 7-Nozzle Fusion Core)
+    // -------------------------------------------------------------------------
+    const throatPlate = new THREE.Mesh(new THREE.CylinderGeometry(0.60, 0.48, 0.12, 32), gunmetal)
+    throatPlate.position.y = 0.71
     group.add(throatPlate)
 
-    const magCoilRing = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.015, 8, 32), cyanCoil)
-    magCoilRing.rotation.x = Math.PI * 0.5
-    magCoilRing.position.y = 0.69
-    group.add(magCoilRing)
+    // 主超导磁约束超导线圈大环
+    const mainMagRing = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.022, 8, 32), cyanCoil)
+    mainMagRing.rotation.x = Math.PI * 0.5
+    mainMagRing.position.y = 0.75
+    group.add(mainMagRing)
 
     // 7 联装独立环形聚变加速喷嘴座标 (Center + Hexagon)
     const nozzleCenters: [number, number][] = [[0, 0]]
     for (let n = 0; n < 6; n++) {
       const a = (n / 6) * Math.PI * 2
-      nozzleCenters.push([Math.cos(a) * 0.18, Math.sin(a) * 0.18])
+      nozzleCenters.push([Math.cos(a) * 0.24, Math.sin(a) * 0.24])
     }
 
     // -------------------------------------------------------------------------
-    // 4. 4-Layer Plasma Plume Rig (Flare + 7 Mach Diamond Cores + Turbulent Sheath)
+    // 6. 4 层流体等离子巨型羽流栈 (Mach Diamond Cores + Sheath + God Rays + Particles + Vapor)
     // -------------------------------------------------------------------------
     const plumeAssembly = new THREE.Group()
-    plumeAssembly.position.y = 0.68
+    plumeAssembly.position.y = 0.74
 
     const coreRayMat = this.createCollimatedCoreRayShader(ignitionThreshold)
     const sheathMat = this.createOuterIonSheathShader(ignitionThreshold)
+    const godRayMat = this.createAtmosphericGodRayShader(ignitionThreshold)
 
-    const singleCoreGeo = new THREE.CylinderGeometry(0.038, 0.048, plumeHeight, 10, 32, true)
+    // 7 联装独立小喷嘴
+    const singleCoreGeo = new THREE.CylinderGeometry(0.065, 0.09, plumeHeight, 10, 32, true)
     singleCoreGeo.translate(0, plumeHeight * 0.5, 0)
 
-    nozzleCenters.forEach(([nx, nz]) => {
-      // 喷嘴金属托架
-      const nozzleBell = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.052, 0.09, 12, 1, true), chromePiston)
-      nozzleBell.position.set(nx, 0.67, nz)
+    nozzleCenters.forEach(([nx, nz], idx) => {
+      // 喷嘴金属托架与青色约束环
+      const isCenter = idx === 0
+      const bellRadius = isCenter ? 0.11 : 0.08
+      const nozzleBell = new THREE.Mesh(
+        new THREE.CylinderGeometry(bellRadius * 1.15, bellRadius, 0.12, 16, 1, true),
+        chromePiston
+      )
+      nozzleBell.position.set(nx, 0.72, nz)
       group.add(nozzleBell)
+
+      const coil = new THREE.Mesh(new THREE.TorusGeometry(bellRadius * 1.1, 0.012, 8, 16), cyanCoil)
+      coil.rotation.x = Math.PI * 0.5
+      coil.position.set(nx, 0.74, nz)
+      group.add(coil)
 
       // 准直白金光芯
       const rayMesh = new THREE.Mesh(singleCoreGeo, coreRayMat)
@@ -775,17 +949,31 @@ export class MegaStructuresBuilder {
       plumeAssembly.add(rayMesh)
     })
 
-    // 外围高斯衰减等离子护鞘
-    const sheathGeo = new THREE.CylinderGeometry(0.44, 0.28, plumeHeight * 0.96, 24, 24, true)
-    sheathGeo.translate(0, plumeHeight * 0.48, 0)
+    // 中央巨型主等离子炽热核 (Primary Volumetric Core Column)
+    const primaryCoreGeo = new THREE.CylinderGeometry(0.32, 0.65, plumeHeight, 20, 32, true)
+    primaryCoreGeo.translate(0, plumeHeight * 0.5, 0)
+    plumeAssembly.add(new THREE.Mesh(primaryCoreGeo, coreRayMat))
+
+    // 外围高斯衰减等离子护鞘 (Expanding Volumetric Outer Ion Sheath)
+    const sheathGeo = new THREE.CylinderGeometry(0.68, 1.65, plumeHeight * 0.98, 24, 24, true)
+    sheathGeo.translate(0, plumeHeight * 0.49, 0)
     plumeAssembly.add(new THREE.Mesh(sheathGeo, sheathMat))
 
-    // 喷口光学星芒耀斑盘 (Nozzle Crown Flare)
-    const flareGeo = new THREE.PlaneGeometry(2.2, 2.2)
+    // 4 向十字交叉大气体积光轴面片 (Crossed Volumetric God-Ray Planes)
+    const godRayGeo = new THREE.PlaneGeometry(3.0, plumeHeight, 1, 16)
+    godRayGeo.translate(0, plumeHeight * 0.5, 0)
+    for (let r = 0; r < 4; r++) {
+      const plane = new THREE.Mesh(godRayGeo, godRayMat)
+      plane.rotation.y = (r / 4) * Math.PI
+      plumeAssembly.add(plane)
+    }
+
+    // 喷口星芒光学耀斑 (Nozzle Crown Flare)
+    const flareGeo = new THREE.PlaneGeometry(3.6, 3.6)
     const flareMat = new THREE.MeshBasicMaterial({
       map: this.softGlowSprite,
       transparent: true,
-      opacity: 0.65,
+      opacity: 0.78,
       blending: THREE.AdditiveBlending,
       depthWrite: false
     })
@@ -794,20 +982,86 @@ export class MegaStructuresBuilder {
     crownFlareMesh.position.y = 0.05
     plumeAssembly.add(crownFlareMesh)
 
-    // 大气穿透激波环 (Atmospheric Shock Wave Ring where beam punches clouds)
-    const shockRingGeo = new THREE.RingGeometry(0.25, 1.85, 32)
+    // 大气穿透激波环 (Atmospheric Shock Wave Ring)
+    const shockRingGeo = new THREE.RingGeometry(0.35, 2.85, 32)
     const shockRingMat = new THREE.MeshBasicMaterial({
       color: 0x60d5ff,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.42,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide
     })
     const shockRingMesh = new THREE.Mesh(shockRingGeo, shockRingMat)
     shockRingMesh.rotation.x = -Math.PI * 0.5
-    shockRingMesh.position.y = plumeHeight * 0.18
+    shockRingMesh.position.y = plumeHeight * 0.16
     plumeAssembly.add(shockRingMesh)
+
+    // -------------------------------------------------------------------------
+    // 7. 高速冲天离子粒子流 (High-Speed Upward Streaming Ions - THREE.Points)
+    // -------------------------------------------------------------------------
+    const ionCount = 750
+    const ionPos = new Float32Array(ionCount * 3)
+    const ionVelocities = new Float32Array(ionCount)
+    const ionColors = new Float32Array(ionCount * 3)
+
+    for (let i = 0; i < ionCount; i++) {
+      const rad = 0.05 + Math.pow(Math.random(), 2.0) * 0.55
+      const theta = Math.random() * Math.PI * 2
+      const y = Math.random() * plumeHeight
+
+      ionPos[i * 3] = Math.cos(theta) * rad * (1.0 + (y / plumeHeight) * 1.6)
+      ionPos[i * 3 + 1] = y
+      ionPos[i * 3 + 2] = Math.sin(theta) * rad * (1.0 + (y / plumeHeight) * 1.6)
+
+      ionVelocities[i] = 0.15 + Math.random() * 0.32
+
+      const normY = y / plumeHeight
+      ionColors[i * 3] = THREE.MathUtils.lerp(1.0, 0.15, normY)
+      ionColors[i * 3 + 1] = THREE.MathUtils.lerp(1.0, 0.78, normY)
+      ionColors[i * 3 + 2] = 1.0
+    }
+
+    const ionGeo = new THREE.BufferGeometry()
+    ionGeo.setAttribute('position', new THREE.BufferAttribute(ionPos, 3))
+    ionGeo.setAttribute('color', new THREE.BufferAttribute(ionColors, 3))
+
+    const ionMat = new THREE.PointsMaterial({
+      size: 0.16,
+      vertexColors: true,
+      map: this.softGlowSprite,
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    })
+    const ionPoints = new THREE.Points(ionGeo, ionMat)
+    plumeAssembly.add(ionPoints)
+
+    // -------------------------------------------------------------------------
+    // 8. 滚滚等离子蒸汽云与冰雪升华烟雾群 (Volumetric Billowing Steam Clouds)
+    // -------------------------------------------------------------------------
+    const vaporSprites: THREE.Sprite[] = []
+    const vaporMat = new THREE.SpriteMaterial({
+      map: this.denseSteamTex,
+      color: 0xd4ecff,
+      transparent: true,
+      opacity: 0.34,
+      depthWrite: false,
+      blending: THREE.NormalBlending
+    })
+
+    for (let v = 0; v < 18; v++) {
+      const sp = new THREE.Sprite(vaporMat)
+      const vAng = (v / 18) * Math.PI * 2 + (Math.random() - 0.5) * 0.25
+      const vRad = 0.85 + Math.random() * 1.45
+      const vY = 0.14 + Math.random() * 0.72
+      sp.position.set(Math.cos(vAng) * vRad, vY, Math.sin(vAng) * vRad)
+      const s = 1.5 + Math.random() * 2.0
+      sp.scale.set(s, s * 0.8, 1)
+      group.add(sp)
+      vaporSprites.push(sp)
+    }
 
     group.add(plumeAssembly)
     group.scale.setScalar(scale)
@@ -817,6 +1071,10 @@ export class MegaStructuresBuilder {
       plumeAssembly,
       coreRayMat,
       sheathMat,
+      godRayMat,
+      ionPoints,
+      ionVelocities,
+      vaporSprites,
       shockRingMesh,
       crownFlareMesh,
       strobes

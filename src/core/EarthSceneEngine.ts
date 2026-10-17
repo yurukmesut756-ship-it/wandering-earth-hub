@@ -863,17 +863,25 @@ export class EarthSceneEngine {
       case 'ENGINE_ARRAY': {
         const n = new THREE.Vector3(0.22, 0.66, 0.72).normalize()
         const f = new THREE.Vector3().crossVectors(up, n).normalize()
-        const r = new THREE.Vector3().crossVectors(arrayNormalRef(), f).normalize()
-        function arrayNormalRef() { return n }
-        const camPos = n
+        const r = new THREE.Vector3().crossVectors(n, f).normalize()
+        // 旗舰发动机在 (f: -1.5, r: 0.3) 附近
+        const engCenter = n
           .clone()
-          .multiplyScalar(EARTH_RADIUS + 2.4)
-          .addScaledVector(f, -9.8)
-          .addScaledVector(r, 1.4)
-        const lookAt = n
+          .multiplyScalar(EARTH_RADIUS + 0.65)
+          .addScaledVector(f, -1.5)
+          .addScaledVector(r, 0.3)
+        // 贴地大仰拍英雄机位 (Low-Angle Hero Shot) 紧贴左前侧山脊，仰望喷口与天际羽流
+        const camPos = engCenter
           .clone()
-          .multiplyScalar(EARTH_RADIUS + 2.2)
-          .addScaledVector(f, 8.5)
+          .addScaledVector(f, -3.2)
+          .addScaledVector(r, -2.2)
+          .addScaledVector(n, 0.68)
+        // 视线朝向喷口上方天际，使发动机雄踞左下方，巨型等离子羽流斜插右上深空！
+        const lookAt = engCenter
+          .clone()
+          .addScaledVector(f, 2.6)
+          .addScaledVector(r, 1.8)
+          .addScaledVector(n, 5.0)
         return { pos: camPos, look: lookAt }
       }
 
@@ -1244,6 +1252,37 @@ export class EarthSceneEngine {
         rig.sheathMat.uniforms.uThrust.value = thrustNorm
         rig.sheathMat.uniforms.uOverclock.value = isOverclock
         rig.sheathMat.uniforms.uIgnitionProgress.value = igProg
+
+        if (rig.godRayMat) {
+          rig.godRayMat.uniforms.uTime.value = elapsed
+          rig.godRayMat.uniforms.uThrust.value = thrustNorm
+          rig.godRayMat.uniforms.uOverclock.value = isOverclock
+          rig.godRayMat.uniforms.uIgnitionProgress.value = igProg
+        }
+
+        if (rig.ionPoints && rig.ionVelocities) {
+          const posAttr = rig.ionPoints.geometry.attributes.position
+          const arr = posAttr.array as Float32Array
+          const v = rig.ionVelocities
+          const speedMul = thrustNorm * (isOverclock > 0.5 ? 1.4 : 1.0)
+          for (let i = 0; i < v.length; i++) {
+            arr[i * 3 + 1] += v[i] * speedMul
+            if (arr[i * 3 + 1] > 14.5) {
+              arr[i * 3 + 1] = 0.05 + Math.random() * 0.4
+              const rad = 0.04 + Math.pow(Math.random(), 2.0) * 0.35
+              const theta = Math.random() * Math.PI * 2
+              arr[i * 3] = Math.cos(theta) * rad
+              arr[i * 3 + 2] = Math.sin(theta) * rad
+            }
+          }
+          posAttr.needsUpdate = true
+        }
+
+        if (rig.vaporSprites) {
+          rig.vaporSprites.forEach((sp, sIdx) => {
+            sp.material.rotation = (elapsed * 0.03 + sIdx * 0.35) % (Math.PI * 2)
+          })
+        }
 
         rig.plumeAssembly.scale.set(1.0, lengthScale, 1.0)
         rig.strobes.forEach((s) => (s.visible = blink))
