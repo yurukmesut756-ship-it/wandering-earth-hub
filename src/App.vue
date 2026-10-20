@@ -3,17 +3,15 @@
     class="earth-migration-app"
     :class="{ 'overclock-mode': telemetry.twelveStrikeActive || telemetry.heliosOverdrive }"
   >
-    <!-- Three.js 全屏实拍级 3D 视口 -->
     <div ref="viewportRef" class="webgl-canvas"></div>
 
-    <!-- 3D-to-2D 空间节点投影追踪准星 -->
+    <!-- 3D-to-2D 空间轨道节点投影追踪准星 -->
     <div
       v-for="ret in telemetry.reticles"
       :key="ret.id"
       v-show="ret.visible"
       class="spatial-reticle"
       :style="{ left: ret.x + 'px', top: ret.y + 'px' }"
-      @mouseenter="soundEngine.playTick()"
       @click="selectNode(ret.id)"
     >
       <svg class="reticle-svg" viewBox="0 0 32 32">
@@ -27,7 +25,7 @@
       </div>
     </div>
 
-    <!-- 三幕宽银幕电影叙事层 (无任何全屏色块遮罩，100% 展示真实 3D 钻石环日全食与雪山点火) -->
+    <!-- 三幕宽银幕史诗电影模式 (JOURNEY) -->
     <transition name="fade">
       <div v-if="telemetry.storyActive" class="widescreen-cinema-layer">
         <div class="letterbox-bar top">
@@ -49,10 +47,10 @@
       </div>
     </transition>
 
-    <!-- 标准硬科幻 HUD 界面 -->
+    <!-- 主控 HUD 界面 -->
     <transition name="fade">
       <div v-if="!telemetry.storyActive && telemetry.hudVisible" class="hud-master-layer">
-        <!-- 左上角：PLANETARY PROPULSION TELEMETRY -->
+        <!-- 左上角：PLANETARY PROPULSION TELEMETRY + 24通道聚变谐振频谱仪 -->
         <aside class="top-left-hud">
           <div class="brand-header">
             <h1 class="project-title">THE EARTH MIGRATION PROJECT</h1>
@@ -84,7 +82,6 @@
                 step="0.5"
                 v-model.number="telemetry.thrustPercent"
                 class="thrust-slider"
-                @input="soundEngine.playTick()"
               />
               <div class="slider-scale">
                 <span>0%</span>
@@ -96,38 +93,62 @@
 
             <div class="readout-grid">
               <div class="readout-row">
-                <span>{{ isZh ? '聚变燃料消耗率 FUEL RATE' : 'FUEL RATE' }}</span>
-                <strong>{{ derivedMetrics.fuelRate }}</strong>
-              </div>
-              <div class="readout-row">
                 <span>{{ isZh ? '核心聚变炉温 CORE TEMP' : 'CORE TEMP' }}</span>
                 <strong>{{ derivedMetrics.coreTemp }}</strong>
+              </div>
+              <div class="readout-row">
+                <span>{{ isZh ? '重元素聚变状态 HEAVY FUSION' : 'HEAVY ELEMENT FUSION' }}</span>
+                <strong class="green-val">ACTIVE</strong>
               </div>
               <div class="readout-row">
                 <span>{{ isZh ? '在线发动机 ACTIVE ENGINES' : 'ACTIVE ENGINES' }}</span>
                 <strong class="cyan-val">{{ derivedMetrics.activeEngines }}</strong>
               </div>
               <div class="readout-row">
-                <span>{{ isZh ? '行星航行速度 EARTH VELOCITY' : 'EARTH VELOCITY' }}</span>
-                <strong>{{ derivedMetrics.earthVelocity }}</strong>
+                <span>{{ isZh ? '扭矩平衡度 TORQUE BALANCE' : 'TORQUE BALANCE' }}</span>
+                <strong>{{ derivedMetrics.torqueBalance }}</strong>
               </div>
               <div class="readout-row">
-                <span>{{ isZh ? '日心距离 SOLAR DISTANCE' : 'SOLAR DISTANCE' }}</span>
-                <strong>{{ derivedMetrics.solarDistance }}</strong>
+                <span>{{ isZh ? '聚变燃料消耗率 FUEL RATE' : 'FUEL RATE' }}</span>
+                <strong>{{ derivedMetrics.fuelRate }}</strong>
               </div>
               <div class="readout-row">
-                <span>{{ isZh ? '航程累计时间 TIME ELAPSED' : 'TIME ELAPSED' }}</span>
-                <strong class="gold-val">{{ derivedMetrics.timeElapsed }}</strong>
+                <span>{{ isZh ? '地下城总人口 POPULATION' : 'POPULATION' }}</span>
+                <strong>3.52B (UNDERGROUND)</strong>
+              </div>
+            </div>
+
+            <div class="spectrum-block">
+              <div class="spec-header">
+                <span>{{ isZh ? '等离子磁约束谐振频谱' : 'PLASMA HARMONIC SPECTRUM' }}</span>
+                <span class="spec-hz">{{ (42.8 + (telemetry.thrustPercent / 100) * 18.4).toFixed(1) }} THz</span>
+              </div>
+              <div class="spectrum-bars">
+                <span
+                  v-for="(h, i) in spectrumBars"
+                  :key="i"
+                  class="spec-bar"
+                  :class="{ hot: h > 78 }"
+                  :style="{ height: h + '%' }"
+                ></span>
               </div>
             </div>
           </div>
         </aside>
 
-        <!-- 右上角：控制开关 + MOSS 550W 量子控制台 + 日心轨迹迷你雷达 -->
+        <!-- 右上角：BGM独立开关 + 音效/语言/MOSS 550W 控制台 + 轨道雷达 -->
         <aside class="top-right-hud">
           <div class="control-pills-bar">
+            <button
+              class="ctrl-pill bgm-pill"
+              :class="{ active: bgmActive }"
+              @click="onToggleBGM"
+            >
+              <span class="bgm-dot" :class="{ playing: bgmActive }"></span>
+              BGM: {{ bgmActive ? 'ON' : 'OFF' }}
+            </button>
             <button class="ctrl-pill" :class="{ active: telemetry.audioEnabled }" @click="toggleAudio">
-              AUDIO: {{ telemetry.audioEnabled ? 'ON' : 'OFF' }}
+              SFX: {{ telemetry.audioEnabled ? 'ON' : 'OFF' }}
             </button>
             <button class="ctrl-pill" @click="toggleLang">
               {{ telemetry.lang === 'EN' ? 'ENG / 中文' : '中文 / ENG' }}
@@ -195,6 +216,13 @@
                       : '[ ENGAGE HELIOS OVERDRIVE ]'
                   }}
                 </button>
+                <button class="moss-action-btn cyan" @click="simulateLunarRocheCrisis">
+                  {{
+                    isZh
+                      ? '[ 模拟地月洛希极限引力危机 // ROCHE DRILL ]'
+                      : '[ SIMULATE LUNAR ROCHE LIMIT CRISIS ]'
+                  }}
+                </button>
               </div>
 
               <form class="moss-cli-form" @submit.prevent="submitMossCmd">
@@ -202,7 +230,7 @@
                 <input
                   v-model="mossInput"
                   type="text"
-                  :placeholder="isZh ? '输入指令 (help / status / truth)...' : 'Type command (help / status / truth)...'"
+                  :placeholder="isZh ? '输入指令 (help / bgm / truth)...' : 'Type command (help / bgm / truth)...'"
                 />
               </form>
             </div>
@@ -210,35 +238,64 @@
 
           <div class="fui-box radar-card">
             <div class="fui-section-title">
-              {{ isZh ? '日心逃逸航迹 // HELIOCENTRIC TRAJECTORY' : 'HELIOCENTRIC TRAJECTORY' }}
+              {{ isZh ? '轨道位置参数 // ORBITAL POSITION' : 'ORBITAL POSITION' }}
+            </div>
+            <div class="readout-grid orbital-mini-grid">
+              <div class="readout-row">
+                <span>HELIO DIST</span>
+                <strong class="gold-val">{{ derivedMetrics.solarDistance }} ↑</strong>
+              </div>
+              <div class="readout-row">
+                <span>ESCAPE VEL</span>
+                <strong class="cyan-val">{{ derivedMetrics.earthVelocity }} ↑</strong>
+              </div>
+              <div class="readout-row">
+                <span>EARTH MASS</span>
+                <strong>5.972e24 kg</strong>
+              </div>
+              <div class="readout-row">
+                <span>ROTATION</span>
+                <strong>HALTED (0.000 rad/s)</strong>
+              </div>
+              <div class="readout-row">
+                <span>PHASE</span>
+                <strong class="cyan-val">1 — BRAKING ERA</strong>
+              </div>
+            </div>
+
+            <div class="fui-section-title radar-sub-header">
+              {{ isZh ? '太阳系逃逸航迹 // SOLAR SYSTEM TRAJECTORY' : 'SOLAR SYSTEM TRAJECTORY' }}
             </div>
             <div class="mini-radar-wrap">
-              <svg width="132" height="132" viewBox="0 0 132 132">
+              <svg width="128" height="128" viewBox="0 0 132 132">
                 <circle cx="66" cy="66" r="56" stroke="rgba(100,190,255,0.14)" fill="none" />
                 <circle cx="66" cy="66" r="38" stroke="rgba(100,190,255,0.2)" stroke-dasharray="3 3" fill="none" />
                 <circle cx="66" cy="66" r="20" stroke="rgba(100,190,255,0.14)" fill="none" />
                 <line x1="66" y1="6" x2="66" y2="126" stroke="rgba(100,190,255,0.1)" />
                 <line x1="6" y1="66" x2="126" y2="66" stroke="rgba(100,190,255,0.1)" />
+                <line
+                  x1="66"
+                  y1="66"
+                  :x2="derivedMetrics.radarEarthX"
+                  :y2="derivedMetrics.radarEarthY"
+                  stroke="rgba(251,191,36,0.35)"
+                  stroke-dasharray="2 2"
+                />
                 <path
                   d="M 66 46 Q 94 48 98 76 T 54 116"
                   stroke="#00d8ff"
                   stroke-width="1.3"
                   fill="none"
                 />
-                <circle cx="66" cy="66" r="4" fill="#fbbf24" />
-                <circle cx="92" cy="62" r="3.5" fill="#00d8ff" />
+                <circle cx="66" cy="66" r="4.5" fill="#fbbf24" />
+                <circle :cx="derivedMetrics.radarEarthX" :cy="derivedMetrics.radarEarthY" r="4" fill="#00d8ff" />
                 <circle cx="42" cy="102" r="3" fill="#94a3b8" />
               </svg>
-              <div class="radar-meta">
-                <div><span class="dot sun"></span> SOL (RED GIANT)</div>
-                <div><span class="dot earth"></span> EARTH ARK ({{ derivedMetrics.solarDistance }})</div>
-                <div><span class="dot jup"></span> JUPITER GRAVITY ASSIST</div>
-              </div>
             </div>
           </div>
         </aside>
 
-        <!-- 底部导航控制坞 -->
+        <!-- 底部导航控制坞：4 大运镜模式 + 9 大场景切换 -->
         <footer class="bottom-nav-dock">
           <div class="node-banner">
             <div class="node-title-line">
@@ -260,7 +317,6 @@
               :key="m.id"
               class="strip-btn"
               :class="{ active: telemetry.currentMode === m.id }"
-              @mouseenter="soundEngine.playTick()"
               @click="selectMode(m.id)"
             >
               {{ isZh ? m.labelZh : m.labelEn }}
@@ -269,13 +325,13 @@
 
           <div class="nav-strip node-strip">
             <button
-              v-for="node in ORBITAL_NODES"
+              v-for="(node, idx) in ORBITAL_NODES"
               :key="node.id"
               class="strip-btn"
               :class="{ active: telemetry.currentNode === node.id }"
-              @mouseenter="soundEngine.playTick()"
               @click="selectNode(node.id)"
             >
+              <small class="key-hint">[{{ idx + 1 }}]</small>
               {{ isZh ? node.labelZh : node.labelEn }}
             </button>
           </div>
@@ -304,22 +360,31 @@ let clockTimer = 0
 let strikeTimer: number | null = null
 
 const isZh = computed(() => telemetry.lang === 'ZH')
+const bgmActive = ref(false)
+const spectrumBars = ref<number[]>(Array.from({ length: 24 }, () => 45))
 
 const modeButtons: { id: ModeId; labelEn: string; labelZh: string }[] = [
   { id: 'CINEMATIC', labelEn: 'CINEMATIC', labelZh: 'CINEMATIC 自动巡航' },
   { id: 'EXPLORE', labelEn: 'EXPLORE', labelZh: 'EXPLORE 自由探索' },
-  { id: 'STORY_INTRO', labelEn: 'STORY INTRO', labelZh: 'STORY INTRO 史诗序章' },
-  { id: 'IGNITION', labelEn: 'IGNITION', labelZh: 'IGNITION 苍穹点火' }
+  { id: 'FIRST_PERSON', labelEn: 'FIRST PERSON', labelZh: 'FIRST PERSON 地表视角' },
+  { id: 'JOURNEY', labelEn: 'JOURNEY', labelZh: 'JOURNEY 史诗航程' }
 ]
+
+const onToggleBGM = () => {
+  bgmActive.value = soundEngine.toggleBGM()
+}
 
 const selectMode = (mode: ModeId) => {
   soundEngine.playConfirm()
   sceneEngine?.setMode(mode)
+  if (mode === 'JOURNEY') {
+    bgmActive.value = soundEngine.bgmPlaying
+  }
 }
 
 const selectNode = (nodeId: NodeId) => {
   soundEngine.playConfirm()
-  if (telemetry.currentMode === 'STORY_INTRO' || telemetry.currentMode === 'IGNITION') {
+  if (telemetry.currentMode === 'JOURNEY') {
     telemetry.currentMode = 'CINEMATIC'
   }
   sceneEngine?.flyToNode(nodeId)
@@ -332,7 +397,12 @@ const exitStorySequence = () => {
 
 const toggleAudio = () => {
   telemetry.audioEnabled = !telemetry.audioEnabled
-  if (telemetry.audioEnabled) soundEngine.playConfirm()
+  if (!telemetry.audioEnabled && soundEngine.bgmPlaying) {
+    soundEngine.stopBGM()
+    bgmActive.value = false
+  } else if (telemetry.audioEnabled) {
+    soundEngine.playConfirm()
+  }
 }
 
 const toggleLang = () => {
@@ -354,7 +424,7 @@ const mossInput = ref('')
 const mossLogs = ref<{ role: 'user' | 'moss'; text: string }[]>([
   {
     role: 'moss',
-    text: '550W 量子核心在线。全球 10,000 座行星发动机已完成并网同步。'
+    text: '550W 量子核心在线。可点击右上角 [BGM: ON] 开启太空管风琴交响配乐。'
   }
 ])
 
@@ -378,28 +448,30 @@ const triggerSpringFestival12Strike = () => {
     return
   }
 
+  if (!soundEngine.bgmPlaying) {
+    soundEngine.startBGM()
+    bgmActive.value = true
+  }
   telemetry.twelveStrikeActive = true
   telemetry.heliosOverdrive = false
   telemetry.thrustPercent = 120.0
   telemetry.strikeCount = 1
-  sceneEngine?.flyToNode('ENGINE_ARRAY', 2.0)
   soundEngine.playTwelveStrikeShockwave()
   soundEngine.speak(
-    'Spring Festival Twelve-Strike engaged. Plasma cores shifted to white-gold high-temperature mode.',
-    '春节十二响已启动，七联装等离子光芯已切换至白金高温超频态。'
+    'Spring Festival Twelve-Strike engaged. Planetary escape acceleration at maximum.',
+    '春节十二响已启动，行星逃逸加速度达到峰值。'
   )
   appendMoss(
     'moss',
     isZh.value
-      ? '🔥 [120% OVERCLOCK] 春节十二响已激活！七联装光芯切换为白金高温束（长度 +25%）。'
-      : '🔥 [120% OVERCLOCK] 12-STRIKE ENGAGED! WHITE-GOLD PLASMA CORES (+25% LENGTH).'
+      ? '🔥 [120% OVERCLOCK] 春节十二响已激活！反冲加速度提升 45%，加速远离太阳！'
+      : '🔥 [120% OVERCLOCK] 12-STRIKE ENGAGED! ESCAPE ACCELERATION +45%!'
   )
 
   if (strikeTimer) clearInterval(strikeTimer)
   strikeTimer = window.setInterval(() => {
     if (!telemetry.twelveStrikeActive) return
     telemetry.strikeCount = (telemetry.strikeCount % 12) + 1
-    soundEngine.playTwelveStrikeShockwave()
   }, 1800)
 }
 
@@ -408,21 +480,29 @@ const engageHeliosOverdrive = () => {
   if (telemetry.heliosOverdrive) {
     telemetry.twelveStrikeActive = false
     telemetry.thrustPercent = 115.0
-    sceneEngine?.flyToNode('EQUATORIAL', 2.2)
     soundEngine.playIgnitionBoom(3)
     soundEngine.speak(
-      'Helios Overdrive engaged. Equatorial torque array at maximum output.',
-      '赫利俄斯超载模式已激活，赤道转向阵列全功率输出。'
+      'Helios Overdrive engaged. Planetary thrust at maximum output.',
+      '赫利俄斯超载模式已激活，行星推力全功率输出。'
     )
     appendMoss(
       'moss',
-      isZh.value ? '⚡ HELIOS OVERDRIVE 已启动，赤道万向节转向阵列锁定 115%。' : '⚡ HELIOS OVERDRIVE ACTIVE. TORQUE ARRAY AT 115%.'
+      isZh.value ? '⚡ HELIOS OVERDRIVE 已启动，推力锁定 115%。' : '⚡ HELIOS OVERDRIVE ACTIVE. THRUST AT 115%.'
     )
   } else {
     telemetry.thrustPercent = 95.8
     soundEngine.playConfirm()
     appendMoss('moss', isZh.value ? '赫利俄斯超载已解除。' : 'HELIOS OVERDRIVE DISENGAGED.')
   }
+}
+
+const simulateLunarRocheCrisis = () => {
+  soundEngine.playIgnitionBoom(1)
+  selectNode('LUNA')
+  const en = 'Alert. Lunar exile engines firing at maximum thrust to decouple from Earth gravity.'
+  const zh = '警告：地月引力解耦进入临界阶段，静海核聚变放逐阵列正在全功率喷射。'
+  appendMoss('moss', isZh.value ? zh : en)
+  soundEngine.speak(en, zh)
 }
 
 const submitMossCmd = () => {
@@ -433,7 +513,10 @@ const submitMossCmd = () => {
   const cmd = raw.toLowerCase()
 
   if (cmd === 'help') {
-    appendMoss('moss', 'COMMANDS: status | truth | 12strike | helios | story | reset')
+    appendMoss('moss', 'COMMANDS: status | bgm | truth | 12strike | helios | luna | journey | reset')
+  } else if (cmd === 'bgm') {
+    onToggleBGM()
+    appendMoss('moss', bgmActive.value ? 'EPIC SYMPHONIC BGM: ENABLED' : 'EPIC SYMPHONIC BGM: MUTED')
   } else if (cmd === 'status') {
     appendMoss(
       'moss',
@@ -448,12 +531,17 @@ const submitMossCmd = () => {
     triggerSpringFestival12Strike()
   } else if (cmd === 'helios') {
     engageHeliosOverdrive()
-  } else if (cmd === 'story') {
-    selectMode('STORY_INTRO')
+  } else if (cmd === 'luna') {
+    simulateLunarRocheCrisis()
+  } else if (cmd === 'journey' || cmd === 'story') {
+    selectMode('JOURNEY')
   } else if (cmd === 'reset') {
     telemetry.twelveStrikeActive = false
     telemetry.heliosOverdrive = false
     telemetry.thrustPercent = 95.8
+    telemetry.accumulatedVelocityKmS = 29.07
+    telemetry.accumulatedSolarDistAU = 1.0475
+    telemetry.sunRecessionUnits = 0.0
     selectNode('EARTH')
   } else {
     appendMoss(
@@ -466,6 +554,14 @@ const submitMossCmd = () => {
 const onKeyDown = (e: KeyboardEvent) => {
   if (e.key === 'Escape' && telemetry.storyActive) {
     exitStorySequence()
+    return
+  }
+  const tag = (e.target as HTMLElement)?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return
+
+  const num = parseInt(e.key, 10)
+  if (num >= 1 && num <= ORBITAL_NODES.length) {
+    selectNode(ORBITAL_NODES[num - 1].id)
   }
 }
 
@@ -477,13 +573,21 @@ onMounted(() => {
   clockTimer = window.setInterval(() => {
     telemetry.jitter = (Math.random() - 0.5) * 2
     if (Math.random() > 0.2) telemetry.elapsedSeconds++
-  }, 150)
+
+    const baseLevel = (telemetry.thrustPercent / 120) * 72
+    spectrumBars.value = spectrumBars.value.map((_, idx) => {
+      const wave = Math.sin(performance.now() * 0.008 + idx * 0.55) * 16
+      const noise = Math.random() * 14
+      return Math.max(8, Math.min(98, Math.round(baseLevel + wave + noise)))
+    })
+  }, 140)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
   clearInterval(clockTimer)
   if (strikeTimer) clearInterval(strikeTimer)
+  soundEngine.stopBGM()
   sceneEngine?.dispose()
 })
 </script>
@@ -514,7 +618,7 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 24px;
   left: 28px;
-  width: 285px;
+  width: 288px;
   pointer-events: auto;
 }
 
@@ -605,8 +709,38 @@ onBeforeUnmount(() => {
 .readout-row strong { color: var(--text-main); font-weight: 400; }
 .cyan-val { color: var(--accent-cyan) !important; }
 .gold-val { color: var(--accent-gold) !important; }
+.green-val { color: var(--safe-green) !important; }
 
-/* 右上角控制区与 MOSS 模态框 */
+.spectrum-block {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(100, 190, 255, 0.12);
+}
+.spec-header {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.spec-hz { color: var(--accent-cyan); }
+.spectrum-bars {
+  height: 26px;
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  align-items: end;
+  gap: 2px;
+}
+.spec-bar {
+  background: linear-gradient(to top, rgba(0, 216, 255, 0.25), rgba(0, 216, 255, 0.85));
+  transition: height 0.12s ease;
+}
+.spec-bar.hot {
+  background: linear-gradient(to top, rgba(255, 170, 51, 0.4), #ffaa33);
+}
+
 .top-right-hud {
   position: absolute;
   top: 24px;
@@ -643,6 +777,22 @@ onBeforeUnmount(() => {
   color: #ffffff;
   border-color: var(--accent-cyan);
   background: rgba(0, 216, 255, 0.14);
+}
+
+.bgm-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(175, 205, 240, 0.4);
+}
+.bgm-dot.playing {
+  background: #00e5ff;
+  box-shadow: 0 0 8px #00e5ff;
+  animation: pulseBgm 1.2s infinite ease-in-out;
+}
+@keyframes pulseBgm {
+  0%, 100% { transform: scale(0.9); opacity: 0.7; }
+  50% { transform: scale(1.3); opacity: 1; }
 }
 
 .moss-pill.alert {
@@ -750,6 +900,15 @@ onBeforeUnmount(() => {
   background: rgba(251, 191, 36, 0.32);
   color: #ffffff;
 }
+.moss-action-btn.cyan {
+  background: rgba(0, 216, 255, 0.1);
+  border-color: rgba(0, 216, 255, 0.45);
+  color: #a5f3fc;
+}
+.moss-action-btn.cyan:hover {
+  background: rgba(0, 216, 255, 0.28);
+  color: #ffffff;
+}
 
 .moss-cli-form {
   display: flex;
@@ -773,34 +932,18 @@ onBeforeUnmount(() => {
 .radar-card {
   width: 248px;
 }
+.orbital-mini-grid {
+  margin-bottom: 12px;
+}
+.radar-sub-header {
+  margin-top: 4px;
+}
 .mini-radar-wrap {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
 }
-.radar-meta {
-  width: 100%;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  color: var(--text-dim);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  margin-right: 5px;
-}
-.dot.sun { background: #fbbf24; }
-.dot.earth { background: #00d8ff; }
-.dot.jup { background: #94a3b8; }
 
-/* 底部导航控制坞 */
 .bottom-nav-dock {
   position: absolute;
   bottom: 20px;
@@ -867,7 +1010,7 @@ onBeforeUnmount(() => {
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.16em;
-  padding: 5px 12px;
+  padding: 5px 11px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -880,8 +1023,12 @@ onBeforeUnmount(() => {
   background: rgba(0, 216, 255, 0.16);
   box-shadow: inset 0 0 10px rgba(0, 216, 255, 0.15);
 }
+.key-hint {
+  opacity: 0.45;
+  font-size: 8px;
+  margin-right: 3px;
+}
 
-/* 三幕宽银幕电影序列遮罩 */
 .widescreen-cinema-layer {
   position: fixed;
   inset: 0;

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>项目功能说明文档 - 流浪地球三维数字孪生系统</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.1/github-markdown.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 45px;
+            background-color: #0d1117;
+            color: #c9d1d9;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        }
+        .markdown-body {
+            background-color: transparent !important;
+            color: #e6edf3 !important;
+        }
+        .markdown-body table tr {
+            background-color: #161b22 !important;
+        }
+        .markdown-body table tr:nth-child(2n) {
+            background-color: #0d1117 !important;
+        }
+        .markdown-body pre {
+            background-color: #161b22 !important;
+            border: 1px solid #30363d;
+        }
+        .markdown-body blockquote {
+            border-left: .25em solid #00f0ff;
+            color: #8b949e;
+        }
+        .markdown-body a {
+            color: #58a6ff;
+        }
+        .print-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            background: #238636;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        .print-btn:hover {
+            background: #2ea043;
+        }
+        @media print {
+            .print-btn { display: none; }
+            body { padding: 0; background: white; color: black; }
+            .markdown-body { color: black !important; }
+        }
+    </style>
+</head>
+<body>
+    <button class="print-btn" onclick="window.print()">🖨️ 打印 / 另存为 PDF</button>
+    <div id="content" class="markdown-body"></div>
+    <script>
+        const rawMarkdown = '# 《流浪地球 · 行星推进全局遥测终端与轨道空间枢纽》\n## 综合应用项目 · 任务四（公开平台开源项目）功能设计与技术实现说明文档\n\n---\n\n### 📋 一、项目基本信息\n\n| 项目属性 | 详细内容 |\n| :--- | :--- |\n| **项目名称** | 《流浪地球 · 行星推进全局遥测终端与轨道空间枢纽》（The Earth Migration Project 2.0） |\n| **所属课程** | 综合应用项目大作业 |\n| **申报任务** | **任务四：在类似 GITHUB 等公开平台，发布自己的项目（★★★★★ 五星任务）** |\n| **开源平台** | GitHub |\n| **项目仓库** | [https://github.com/yurukmesut756-ship-it/wandering-earth-hub](https://github.com/yurukmesut756-ship-it/wandering-earth-hub) |\n| **技术架构** | Vue 3 + TypeScript + Three.js (WebGL PBR & Custom Shader) + GSAP + Web Audio API + Web Speech API |\n| **开源协议** | MIT License |\n\n---\n\n### 🌌 二、项目背景与设计理念\n\n本项目取材于刘慈欣著名硬科幻作品《流浪地球》宇宙观体系。在太阳即将发生氦闪、人类开启“流浪地球计划”（刹车时代 $\\rightarrow$ 逃逸时代）的宏大史诗背景下，设计并研发了一套**高精度、全交互、跨尺度统一的三维数字孪生航行控制与深空遥测系统**。\n\n传统类似项目往往存在以下痛点：\n1. **模型尺度断层**：宏观地球与微观行星发动机通常割裂在不同场景，无法无缝漫游与连续变焦；\n2. **外部资产臃肿**：过度依赖数十兆甚至上百兆的外置 GLTF/OBJ 模型和音频 MP3 文件，导致加载延迟高、资产易损坏；\n3. **视觉表现粗糙**：发动机火焰往往只用简单的半透明圆锥或粗糙粒子模拟，缺乏等离子高能聚变的视觉张力。\n\n针对上述难题，本项目贯彻 **“100% 原创程序化生成（Procedural Generation）”** 与 **“物理拟真三维数字孪生”** 理念：\n- **零外部三维资产模型依赖**：行星发动机、太空电梯、天柱同步轨道站、极光号斯坦福圆环城、深空太阳帆中继舰队及月球放逐发动机等全部通过 Three.js 底层几何体进行野兽派工业级参数化建模；\n- **零外部音频文件依赖**：所有操作交互音效以及《流浪地球 / 星际穿越》风格太空史诗背景音乐（BGM），全部基于原生 Web Audio API 纯数学振荡器与滤波算法实时合成；\n- **统一宇宙宇宙空间坐标系**：定义基准地球半径 $R = 100$，构建全局 3,600 座行星发动机实时光锥，并研发了防穿模的球面大圆弧线电影运镜系统。\n\n---\n\n### 🏗️ 三、系统架构与模块设计\n\n系统整体采用现代前端工程化架构，分为三大核心层级：\n\n```\n+--------------------------------------------------------------------------+\n|                  MOSS 550W 终端人机交互 HUD 展现层 (Vue 3)                |\n|  - 实时引力/速度/距离遥测面板   - 8大轨道空间节点准星追踪   - 史诗航程/超频控制台  |\n|  - Web Speech API 双语语音播报 - 2D太阳系逃逸雷达图      - 🎵 实时BGM总控开关   |\n+--------------------------------------------------------------------------+\n                                    |\n+--------------------------------------------------------------------------+\n|                  物理动力学与音效计算核心层 (Core Telemetry & Audio)       |\n|  - PhysicsTelemetry.ts : 牛顿引力加速迭代、太阳逃逸距离推算、自转制动模拟    |\n|  - SoundEngine.ts       : Web Audio API 多声部太空管风琴/重低音/晶体琶音合成器|\n+--------------------------------------------------------------------------+\n                                    |\n+--------------------------------------------------------------------------+\n|                  三维实时图形与着色器引擎层 (WebGL / Three.js)             |\n|  - EarthSceneEngine.ts       : 场景图构建、后处理 Bloom 发光、运镜防穿模算法 |\n|  - MegaStructuresBuilder.ts  : 8大野兽派工业巨构装配、程序化 PBR 贴图生成器 |\n|  - Shaders                   : 准直激光等离子巨柱、螺旋涡流套鞘、马赫激波环 |\n+--------------------------------------------------------------------------+\n```\n\n#### 核心源码模块分布：\n- `src/App.vue`：550W 量子终端核心 UI、空间节点 3D-to-2D 屏幕投影准星、HUD 数据监控、全屏响应式布局；\n- `src/core/EarthSceneEngine.ts`：Three.js 核心渲染管线、轨道控制器（OrbitControls）、辉光后处理（UnrealBloomPass）、电影运镜序列；\n- `src/core/MegaStructuresBuilder.ts`：野兽派发动机参数化装配、程序化金属/冰雪 PBR 材质生成、激光等离子核心着色器系统；\n- `src/core/PhysicsTelemetry.ts`：行星动力学遥测状态机、牛顿物理推进积分计算、逃逸轨道参数派生；\n- `src/core/SoundEngine.ts`：Web Audio API 太空合成器、Hans Zimmer 风格 D 小调多声部史诗交响 BGM 引擎。\n\n---\n\n### 🚀 四、核心功能与技术突破\n\n#### 1. 高逼真程序化 PBR 纹理生成系统\n针对网络带宽限制，本系统在内存中使用 HTML5 Canvas 动态烘焙生成超高精度 PBR 材质：\n- **重工业装甲钢板**：动态生成漫反射（Albedo）、粗糙度（Roughness）及带有 3×3 Sobel 滤波核的凹凸法线贴图（Normal Map），包含高精度铆钉阵列与板缝焊接纹理；\n- **冰封地球纹理**：算法合成冰晶白陆地大陆架、暗色深海轮廓、极地冰原反照率，以及暗夜半球深蓝冰壳与金色地下城脉络；\n- **双层瑞利散射大气层**：采用自定义着色器实现向阳面天蓝辉光与夜半球幽蓝深空光环。\n\n#### 2. 超高亮度等离子冲天激光巨柱（2.2倍加粗强化）\n- **核心等离子 Shader**：采用自定义顶点与片元着色器，支持 10 节超音速马赫激波环（Shock Diamond）物理模拟；\n- **全方位保底可见度**：通过视线菲涅尔反相补偿算法，保证光柱在任何旋转视角、甚至俯仰极角下都具有恒定的白青高能激光芯；\n- **喷口高能聚变星芒耀斑**：在发动机喉部搭载高亮星芒 Sprite 粒子，近景观察如同一颗微型超新星爆发；\n- **全天候阵列可见**：取消了远景距离剔除，无论相机拉到多远，北半球与赤道共 73 座推进矩阵冲天激光束全天候清晰可见。\n\n#### 3. 8 大高精度三维实体机械巨构建模\n1. **EARTH (地球全景)**：基准比例尺 $R = 100$，呈现冰封大陆与全球 3,600 座发动机实时光针；\n2. **ENGINE ARRAY 01 (一号推进阵列)**：喜马拉雅山脉多倍频雪山地形，配备 11 公里级七联装重聚变巨塔与斜撑液压腿；\n3. **EQUATORIAL (赤道转向阵列)**：装甲壕沟与万向节双耳轴支架，以 20° 切向喷射环绕行星自转切线的推进光河；\n4. **ANCHOR (加蓬太空电梯要塞)**：赤道冰海八角重型要塞、8 座交叉金属桁架发射脐带塔与电磁导轨轿厢；\n5. **TIANZHU (天柱号同步轨道配重站)**：高度 $35,786\\text{ km}$，拉丝钛合金桁架、金色隔热膜与双层反向旋转重力环；\n6. **HABITAT (极光号双环旋转殖民城)**：高轨斯坦福圆环生态领航城，包含 12 辐条交通网络与零重力船坞；\n7. **DEEP SPACE (深空太阳帆激光中继网)**：日心轨道 18 镜片蜂窝镀金主镜与 5 层菱形太阳帆相控阵中继舰队；\n8. **LUNA (月球放逐伴星)**：月表高精度陨石坑材质，静海 3 座核聚变推进器正持续将月球推出洛希极限。\n\n#### 4. Web Audio 零依赖史诗交响 BGM 合成器\n无需下载任何 MP3 音频，利用代码数学公式实时振荡出 Hans Zimmer 级太空管风琴交响配乐：\n- **深空重低音 Drone**：低通滤波锯齿波模拟引力波脉冲；\n- **管风琴与铜管 Pad**：双振荡器微弱失谐（Detune $\\pm 0.3\\%$），营造空灵宏大的太空合唱感；\n- **星空水晶琶音**：高频正弦波脉冲循环推进，和弦按 $Dm9 \\rightarrow Bbmaj7 \\rightarrow Gm7 \\rightarrow A7$ 史诗进行；\n- **控制支持**：界面右上角提供独立 `🎵 BGM: ON/OFF` 开关，并与“春节十二响”点火事件联动自动激昂升温。\n\n#### 5. 电影级宽银幕镜头编排与防穿模运镜\n- **三幕史诗运镜**：`THE DYING SUN`（太阳日全食与钻石环） $\\rightarrow$ `IGNITION`（雪山多米诺骨牌式梯次点火） $\\rightarrow$ `TURNING THE WORLD`（全球光柱破云而出齐射）；\n- **球面大圆航线算法**：当跨越地球两极或大陆时，相机航线如果低于地表外包络安全半径（$R < 115$），系统自动切入大圆弧线绕飞，100% 杜绝镜头穿透地心的穿模缺陷。\n\n---\n\n### 💻 五、运行与部署说明\n\n#### 1. 本地开发与调试\n```bash\n# 进入工程目录\ncd wandering-earth-hub\n\n# 安装前端依赖 (Three.js, Vue 3, GSAP, TypeScript 等)\nnpm install\n\n# 启动本地开发服务器 (支持 Vite HMR 热重载与局域网广播)\nnpm run dev\n```\n打开浏览器访问：`http://localhost:5173/`\n\n#### 2. 生产环境打包构建\n```bash\n# 静态资源优化与 TypeScript 严格模式类型检查\nnpm run build\n```\n构建产物输出于 `dist/` 目录，可直接部署于 Nginx、Vercel、GitHub Pages 或任何静态 Web 服务器。\n\n---\n\n### 📦 六、大作业提交内容清单\n\n依据综合应用项目【任务四】考核标准，提交内容包括：\n\n1. **GitHub 公开仓库地址**：\n   👉 [https://github.com/yurukmesut756-ship-it/wandering-earth-hub](https://github.com/yurukmesut756-ship-it/wandering-earth-hub)\n2. **完整源码与文档独立打包压缩包**：\n   - 压缩包名称：`综合大作业_项目四_流浪地球三维数字孪生系统_源码与文档.zip`\n   - 包含文件：全套 TypeScript/Vue/Three.js 核心源代码、工程配置文件、Markdown 说明文档与离线网页版文档。\n3. **开源许可协议**：MIT License（保障项目开源属性与学术诚信）。\n\n---\n\n*文档编写日期：2026年10月*  \n*项目负责人 / 开发者：Quicksilver*\n';
+        document.getElementById('content').innerHTML = marked.parse(rawMarkdown);
+    </script>
+</body>
+</html>
