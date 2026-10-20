@@ -7,6 +7,9 @@
 [![Vite](https://img.shields.io/badge/Vite-5.2.0-646cff?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
+> **🚀 24小时公网在线体验地址**：[https://yurukmesut756-ship-it.github.io/wandering-earth-hub/](https://yurukmesut756-ship-it.github.io/wandering-earth-hub/)  
+> （由 GitHub Pages 托管，无需启动本地电脑，手机/电脑浏览器均可随时随地流畅畅玩）
+
 > **AAA 级硬科幻工业美术规范 · 全流程三维数字孪生与电影级运镜编排**  
 > 采用统一天体比例尺（`EARTH_RADIUS = 100`）、程序化 PBR 工业级材质渲染管线、物理三维日全食与多米诺行星发动机矩阵点火。  
 > **零外部三维资产依赖** · **零外部音频文件依赖** · **纯算法实时合成太空交响 BGM**
